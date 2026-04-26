@@ -11,7 +11,10 @@ ARG RUNNER_IMAGE="debian:bookworm-slim"
 # ============================================================================
 FROM ${BUILDER_IMAGE} AS builder
 
-RUN apt-get update -y && \
+# Switch apt source to Tencent Cloud mirror (CN: deb.debian.org is unreachable/slow)
+RUN sed -i 's|http://deb.debian.org/debian|http://mirrors.cloud.tencent.com/debian|g' \
+      /etc/apt/sources.list.d/debian.sources && \
+    apt-get update -y && \
     apt-get install -y --no-install-recommends \
       build-essential git ca-certificates && \
     apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/*
@@ -55,7 +58,10 @@ RUN mix release
 # ============================================================================
 FROM ${RUNNER_IMAGE} AS final
 
-RUN apt-get update -y && \
+# Same Tencent Cloud apt mirror swap for runtime stage
+RUN sed -i 's|http://deb.debian.org/debian|http://mirrors.cloud.tencent.com/debian|g' \
+      /etc/apt/sources.list.d/debian.sources && \
+    apt-get update -y && \
     apt-get install -y --no-install-recommends \
       libstdc++6 openssl libncurses6 locales ca-certificates \
       tini wget && \
