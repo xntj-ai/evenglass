@@ -1,0 +1,14 @@
+## Customize VM flags. Reference: http://erlang.org/doc/man/erl.html
+## -name / -setcookie come from rel/env.sh.eex (Docker-aware).
+
+## Concurrent ports/sockets — default 16384 is too low for WS-heavy workloads.
++Q 65536
+
+## Match scheduler count to container CPU limit (host has 2 cores).
+## Without this, BEAM sees host CPUs and oversubscribes inside cgroup.
++S 2:2
+
+## Disable scheduler busy-wait — saves CPU on small machines.
++sbwt none
++sbwtdcpu none
++sbwtdio none

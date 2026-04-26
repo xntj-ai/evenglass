@@ -1,0 +1,65 @@
+name: evenglass
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: evenglass-postgres
+    restart: unless-stopped
+    # TZ env var is ignored by postgres; -c flag is the only working way
+    command: postgres -c timezone=Asia/Shanghai
+    environment:
+      POSTGRES_DB: evenglass_prod
+      POSTGRES_USER: evenglass
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evenglass -d evenglass_prod"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    mem_limit: 1g
+    networks:
+      - evenglass
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: evenglass:latest
+    container_name: evenglass-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ecto://evenglass:${POSTGRES_PASSWORD}@postgres/evenglass_prod
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?SECRET_KEY_BASE required}
+      RELEASE_COOKIE: ${RELEASE_COOKIE:?RELEASE_COOKIE required}
+      PHX_HOST: ${PHX_HOST:-g2.xntj.tv}
+      PHX_SERVER: "true"
+      PORT: "4000"
+      POOL_SIZE: "10"
+    ports:
+      # Loopback only — host Caddy reverse-proxies into this
+      - "127.0.0.1:4000:4000"
+    # 8 GB host: leave 2 GB buffer for OS + postgres + caddy + derper
+    mem_limit: 6g
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    # 30s for LiveView graceful close + ecto pool drain
+    stop_grace_period: 30s
+    networks:
+      - evenglass
+
+volumes:
+  pgdata:
+    name: evenglass-pgdata
+
+networks:
+  evenglass:
+    name: evenglass
+    driver: bridge

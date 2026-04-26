@@ -1,0 +1,52 @@
+# Target state for /etc/caddy/Caddyfile on Beijing server (101.42.154.134).
+# Replaces the existing single-site Caddyfile that only had cc.xntj.tv (now defunct).
+# `derper-bj` container manages its own TLS on 3443, NOT proxied through Caddy.
+#
+# Deploy:
+#   sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
+#   sudo caddy validate --config /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+
+{
+	# Trust X-Forwarded-* headers from loopback / private ranges
+	# (we run Phoenix on 127.0.0.1:4000 → Caddy reverse-proxies in)
+	servers {
+		trusted_proxies static private_ranges
+		# Keep WebSocket streams alive across `caddy reload` for up to 1h
+		# Without this, every reload forcibly closes all LiveView connections.
+		# See: github.com/caddyserver/caddy/issues/6420
+	}
+}
+
+g2.xntj.tv {
+	encode zstd gzip
+
+	# LiveView upload limit (default is unlimited; cap to prevent abuse)
+	request_body {
+		max_size 100MB
+	}
+
+	reverse_proxy 127.0.0.1:4000 {
+		# Force HTTP/1.1 upstream (Phoenix Bandit speaks h1; avoid H2C mismatch)
+		# Disable read timeout so LiveView WebSockets don't drop at 9-10s
+		# (Caddy 2.9.x bug: github.com/caddyserver/caddy/issues/6958)
+		transport http {
+			read_timeout 0
+			versions 1.1
+		}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	log {
+		output file /var/log/caddy/g2.xntj.tv.log {
+			roll_size 100mb
+			roll_keep 5
+		}
+		format json
+	}
+}

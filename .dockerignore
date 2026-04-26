@@ -1,0 +1,57 @@
+# Build artifacts
+_build/
+deps/
+*.beam
+*.ez
+erl_crash.dump
+
+# Generated assets (will be rebuilt in Docker)
+priv/static/assets/
+priv/static/cache_manifest.json
+assets/node_modules/
+
+# Git / VCS
+.git/
+.gitignore
+.gitattributes
+
+# Editor / IDE
+.elixir_ls/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Project docs (not needed in image)
+.formatter.exs
+README.md
+CLAUDE.md
+AGENTS.md
+docs/
+sources/
+notes/
+
+# Tests (don't ship test code)
+test/
+
+# Env / secrets — must not be baked into image
+.env
+.env.*
+!.env.example
+
+# Compose files (not needed inside image)
+docker-compose*.yml
+deploy/
+
+# Logs
+*.log
+logs/
+
+# Tmp
+/tmp/
