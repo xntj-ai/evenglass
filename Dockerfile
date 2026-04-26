@@ -86,4 +86,5 @@ ENTRYPOINT ["/usr/bin/tini", "--"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD wget --spider -q http://localhost:4000/ || exit 1
 
-CMD ["/app/bin/server"]
+# PHX_SERVER=true (set in docker-compose) tells runtime.exs to start the endpoint
+CMD ["/app/bin/evenglass", "start"]
