@@ -1,6 +1,9 @@
 # Build artifacts
 _build/
 deps/
+# Pre-downloaded heroicons (CN cannot reach github from server) — must ship in build context
+!deps/heroicons
+deps/heroicons/.git
 *.beam
 *.ez
 erl_crash.dump

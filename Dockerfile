@@ -24,6 +24,9 @@ ENV MIX_ENV=prod
 
 # Cache deps layer separately
 COPY mix.exs mix.lock ./
+# Pre-place heroicons (CN servers cannot reach github.com from inside docker).
+# mix deps.get sees deps/heroicons already exists + matches lock → skips git clone.
+COPY deps/heroicons deps/heroicons
 RUN mix deps.get --only $MIX_ENV
 
 # Copy compile-time config (NOT runtime.exs — that goes after compile)
