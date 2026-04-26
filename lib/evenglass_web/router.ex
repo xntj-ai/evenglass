@@ -20,10 +20,19 @@ defmodule EvenglassWeb.Router do
     get "/", PageController, :home
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", EvenglassWeb do
-  #   pipe_through :api
-  # end
+  scope "/admin", EvenglassWeb do
+    pipe_through :browser
+
+    live_session :admin do
+      live "/events", Admin.EventsLive
+    end
+  end
+
+  scope "/api", EvenglassWeb do
+    pipe_through :api
+
+    post "/mock", MockController, :create
+  end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:evenglass, :dev_routes) do
