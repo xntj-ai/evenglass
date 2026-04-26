@@ -41,6 +41,14 @@ COPY priv priv
 COPY lib lib
 COPY assets assets
 
+# Pre-place tailwind v4 binary (CN cannot reliably reach github releases — same
+# class of problem as heroicons git clone). Tailwind hex lib looks at
+# `_build/tailwind-<target>` before downloading; if present it runs instead.
+# The binary ships in the build context from vendor/ — see deploy notes for
+# how it gets there (Shanghai sing-box → scp to server).
+COPY vendor/tailwind/tailwindcss-linux-x64 _build/tailwind-linux-x64
+RUN chmod +x _build/tailwind-linux-x64
+
 # Compile release first, THEN assets — order matches phx.gen.release template
 RUN mix compile
 

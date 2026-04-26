@@ -46,3 +46,6 @@ docker-compose.override.yml
 # Local research artifacts (sources/notes 走 research 项目)
 sources/
 notes/raw/
+
+# Vendored binaries (large, fetched separately on server via Shanghai proxy)
+vendor/tailwind/tailwindcss-*
