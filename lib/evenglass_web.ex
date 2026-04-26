@@ -38,9 +38,7 @@ defmodule EvenglassWeb do
 
   def controller do
     quote do
-      use Phoenix.Controller,
-        formats: [:html, :json],
-        layouts: [html: EvenglassWeb.Layouts]
+      use Phoenix.Controller, formats: [:html, :json]
 
       use Gettext, backend: EvenglassWeb.Gettext
 
@@ -52,8 +50,7 @@ defmodule EvenglassWeb do
 
   def live_view do
     quote do
-      use Phoenix.LiveView,
-        layout: {EvenglassWeb.Layouts, :app}
+      use Phoenix.LiveView
 
       unquote(html_helpers())
     end
@@ -90,8 +87,9 @@ defmodule EvenglassWeb do
       # Core UI components
       import EvenglassWeb.CoreComponents
 
-      # Shortcut for generating JS commands
+      # Common modules used in templates
       alias Phoenix.LiveView.JS
+      alias EvenglassWeb.Layouts
 
       # Routes generation with the ~p sigil
       unquote(verified_routes())

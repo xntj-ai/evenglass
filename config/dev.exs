@@ -20,11 +20,11 @@ config :evenglass, EvenglassWeb.Endpoint,
   # Bind to 0.0.0.0 to expose the server to the docker host machine.
   # This makes make the service accessible from any network interface.
   # Change to `ip: {127, 0, 0, 1}` to allow access only from the server machine.
-  http: [ip: {0, 0, 0, 0}, port: 4000],
+  http: [ip: {0, 0, 0, 0}],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
-  secret_key_base: "fiybWCLCJUoU+Jd8o+y9/UEA4N+Y6Efy+sNhjlRkUPE3YLLXk8Yh765C6+oaA5d0",
+  secret_key_base: "x2TVIujqJCbbMo2S4FvWq63O1YbofRpDhOokZ0T+w25WqJ0KKSJIQMs7twT87Zo0",
   watchers: [
     esbuild: {Esbuild, :install_and_run, [:evenglass, ~w(--sourcemap=inline --watch)]},
     tailwind: {Tailwind, :install_and_run, [:evenglass, ~w(--watch)]}
@@ -53,13 +53,18 @@ config :evenglass, EvenglassWeb.Endpoint,
 # configured to run both http and https servers on
 # different ports.
 
-# Watch static and templates for browser reloading.
+# Reload browser tabs when matching files change.
 config :evenglass, EvenglassWeb.Endpoint,
   live_reload: [
+    web_console_logger: true,
     patterns: [
-      ~r"priv/static/(?!uploads/).*(js|css|png|jpeg|jpg|gif|svg)$",
-      ~r"priv/gettext/.*(po)$",
-      ~r"lib/evenglass_web/(controllers|live|components)/.*(ex|heex)$"
+      # Static assets, except user uploads
+      ~r"priv/static/(?!uploads/).*\.(js|css|png|jpeg|jpg|gif|svg)$",
+      # Gettext translations
+      ~r"priv/gettext/.*\.po$",
+      # Router, Controllers, LiveViews and LiveComponents
+      ~r"lib/evenglass_web/router\.ex$",
+      ~r"lib/evenglass_web/(controllers|live|components)/.*\.(ex|heex)$"
     ]
   ]
 
@@ -67,7 +72,7 @@ config :evenglass, EvenglassWeb.Endpoint,
 config :evenglass, dev_routes: true
 
 # Do not include metadata nor timestamps in development logs
-config :logger, :console, format: "[$level] $message\n"
+config :logger, :default_formatter, format: "[$level] $message\n"
 
 # Set a higher stacktrace during development. Avoid configuring such
 # in production as building large stacktraces may be expensive.
@@ -77,8 +82,10 @@ config :phoenix, :stacktrace_depth, 20
 config :phoenix, :plug_init_mode, :runtime
 
 config :phoenix_live_view,
-  # Include HEEx debug annotations as HTML comments in rendered markup
+  # Include debug annotations and locations in rendered markup.
+  # Changing this configuration will require mix clean and a full recompile.
   debug_heex_annotations: true,
+  debug_attributes: true,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
 

@@ -17,7 +17,7 @@ config :evenglass, Evenglass.Repo,
 # you can enable the server option below.
 config :evenglass, EvenglassWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
-  secret_key_base: "Y1cGPhvDInKVEdAlY3oKPVImf3vEp3dd3h0OKJwkmXBj2s4UlV+05r34nwLKIKKJ",
+  secret_key_base: "zIhHnHnTtsaf/sA6YcDN3n0DUZVuDC4zRgGGOODsAlw03tIkwwTgx/Wky+lVFfKS",
   server: false
 
 # In test we don't send emails
@@ -35,3 +35,7 @@ config :phoenix, :plug_init_mode, :runtime
 # Enable helpful, but potentially expensive runtime checks
 config :phoenix_live_view,
   enable_expensive_runtime_checks: true
+
+# Sort query params output of verified routes for robust url comparisons
+config :phoenix,
+  sort_verified_routes_query_params: true
