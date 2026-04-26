@@ -30,4 +30,15 @@ defmodule Evenglass.Events do
         preload: [:session]
     )
   end
+
+  def list_recent_events_for_device(device_id, limit \\ 50) do
+    Repo.all(
+      from e in Event,
+        join: s in assoc(e, :session),
+        where: s.device_id == ^device_id,
+        order_by: [desc: e.inserted_at],
+        limit: ^limit,
+        preload: [session: s]
+    )
+  end
 end

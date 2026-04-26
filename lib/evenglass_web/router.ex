@@ -25,13 +25,15 @@ defmodule EvenglassWeb.Router do
 
     live_session :admin do
       live "/events", Admin.EventsLive
+      live "/devices", Admin.DevicesLive
     end
   end
 
-  scope "/api", EvenglassWeb do
+  scope "/api/g2", EvenglassWeb do
     pipe_through :api
 
-    post "/mock", MockController, :create
+    post "/events", G2Controller, :create_event
+    post "/commands", G2Controller, :create_command
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development

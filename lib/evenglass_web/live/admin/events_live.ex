@@ -12,14 +12,36 @@ defmodule EvenglassWeb.Admin.EventsLive do
     {:ok,
      socket
      |> assign(:page_title, "Events")
-     |> assign(:max_events, @max_events)
-     |> stream(:events, Events.list_recent_events(@max_events), limit: @max_events)}
+     |> assign(:max_events, @max_events)}
+  end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    device_filter = params["device"]
+
+    events =
+      case device_filter do
+        nil -> Events.list_recent_events(@max_events)
+        device_id -> Events.list_recent_events_for_device(device_id, @max_events)
+      end
+
+    {:noreply,
+     socket
+     |> assign(:device_filter, device_filter)
+     |> stream(:events, events, reset: true, limit: @max_events)}
   end
 
   @impl true
   def handle_info({:event_created, event}, socket) do
-    {:noreply, stream_insert(socket, :events, event, at: 0)}
+    if matches_filter?(event, socket.assigns.device_filter) do
+      {:noreply, stream_insert(socket, :events, event, at: 0)}
+    else
+      {:noreply, socket}
+    end
   end
+
+  defp matches_filter?(_event, nil), do: true
+  defp matches_filter?(event, device_id), do: event.session.device_id == device_id
 
   @impl true
   def render(assigns) do
@@ -27,9 +49,15 @@ defmodule EvenglassWeb.Admin.EventsLive do
     <div class="mx-auto max-w-7xl px-4 py-8">
       <div class="mb-6 flex items-center justify-between">
         <h1 class="text-2xl font-semibold">Event Stream</h1>
-        <div class="text-sm opacity-70">
-          Last {@max_events} events · auto-refreshing
+        <div class="flex items-center gap-3 text-sm">
+          <.link navigate={~p"/admin/devices"} class="link link-primary">devices →</.link>
+          <span class="opacity-70">last {@max_events} events · auto-refreshing</span>
         </div>
+      </div>
+
+      <div :if={@device_filter} class="mb-4 flex items-center gap-2">
+        <span class="badge badge-warning">Filter: {@device_filter}</span>
+        <.link patch={~p"/admin/events"} class="link link-sm">clear</.link>
       </div>
 
       <div class="overflow-x-auto rounded-lg border border-base-300">
