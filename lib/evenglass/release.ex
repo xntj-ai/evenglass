@@ -43,36 +43,40 @@ defmodule Evenglass.Release do
   """
   def create_pc_admin(email, password) when is_binary(email) and is_binary(password) do
     load_app()
-    {:ok, _} = Application.ensure_all_started(:evenglass)
 
-    case Evenglass.Accounts.get_pc_user_by_email(email) do
-      %Evenglass.Accounts.PCUser{} ->
-        IO.puts(:stderr, "PC admin '#{email}' already exists; skipping.")
-        :already_exists
+    # Start only the Repo — not the full Endpoint — since `eval` runs in a fresh
+    # BEAM alongside the live release; starting Endpoint would clash on :4000.
+    {:ok, _, _} =
+      Ecto.Migrator.with_repo(Evenglass.Repo, fn _repo ->
+        case Evenglass.Accounts.get_pc_user_by_email(email) do
+          %Evenglass.Accounts.PCUser{} ->
+            IO.puts(:stderr, "PC admin '#{email}' already exists; skipping.")
+            :already_exists
 
-      nil ->
-        # Build the account with both email + password set, and stamp
-        # confirmed_at so the user can log in directly without going through
-        # the magic-link confirmation step.
-        changeset =
-          %Evenglass.Accounts.PCUser{}
-          |> Evenglass.Accounts.PCUser.email_changeset(%{email: email})
-          |> Evenglass.Accounts.PCUser.password_changeset(%{password: password},
-            hash_password: true
-          )
-          |> Ecto.Changeset.put_change(:confirmed_at, DateTime.utc_now(:second))
+          nil ->
+            # Build the account with both email + password set, and stamp
+            # confirmed_at so the user can log in directly without going through
+            # the magic-link confirmation step.
+            changeset =
+              %Evenglass.Accounts.PCUser{}
+              |> Evenglass.Accounts.PCUser.email_changeset(%{email: email})
+              |> Evenglass.Accounts.PCUser.password_changeset(%{password: password},
+                hash_password: true
+              )
+              |> Ecto.Changeset.put_change(:confirmed_at, DateTime.utc_now(:second))
 
-        case Evenglass.Repo.insert(changeset) do
-          {:ok, pc_user} ->
-            IO.puts("Created PC admin '#{pc_user.email}' (id: #{pc_user.id}).")
-            IO.puts("Visit /pc_users/log-in; on first login you'll set up TOTP.")
-            {:ok, pc_user}
+            case Evenglass.Repo.insert(changeset) do
+              {:ok, pc_user} ->
+                IO.puts("Created PC admin '#{pc_user.email}' (id: #{pc_user.id}).")
+                IO.puts("Visit /pc_users/log-in; on first login you'll set up TOTP.")
+                {:ok, pc_user}
 
-          {:error, changeset} ->
-            IO.puts(:stderr, "Failed to create PC admin: #{inspect(changeset.errors)}")
-            {:error, changeset}
+              {:error, changeset} ->
+                IO.puts(:stderr, "Failed to create PC admin: #{inspect(changeset.errors)}")
+                {:error, changeset}
+            end
         end
-    end
+      end)
   end
 
   defp repos do
