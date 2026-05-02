@@ -22,6 +22,15 @@ defmodule EvenglassWeb.Router do
     plug EvenglassWeb.Plugs.AuthenticatedAPI
   end
 
+  # Browser-session-authenticated API. Required for endpoints that PCs (or the
+  # admin browser) hit with the same `:pc_user_token` cookie used for /admin.
+  pipeline :authenticated_admin_api do
+    plug :accepts, ["json"]
+    plug :fetch_session
+    plug :fetch_current_scope_for_pc_user
+    plug :require_pc_admin
+  end
+
   scope "/", EvenglassWeb do
     pipe_through :browser
 
@@ -29,9 +38,9 @@ defmodule EvenglassWeb.Router do
   end
 
   scope "/admin", EvenglassWeb do
-    pipe_through :browser
+    pipe_through [:browser, :require_pc_admin]
 
-    live_session :admin do
+    live_session :admin, on_mount: [{EvenglassWeb.PCUserAuth, :require_pc_admin}] do
       live "/events", Admin.EventsLive
       live "/devices", Admin.DevicesLive
     end
@@ -53,10 +62,9 @@ defmodule EvenglassWeb.Router do
       post "/events", G2Controller, :create_event
     end
 
-    # PC commands — currently unprotected; task 1.5 introduces PC user auth
-    # and an :authenticated_admin_api pipeline that will guard this endpoint.
+    # PC commands — gated on a 2FA-completed admin session.
     scope "/" do
-      pipe_through :api
+      pipe_through :authenticated_admin_api
       post "/commands", G2Controller, :create_command
     end
   end

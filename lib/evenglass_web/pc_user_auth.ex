@@ -342,6 +342,35 @@ defmodule EvenglassWeb.PCUserAuth do
     end
   end
 
+  def on_mount(:require_pc_admin, _params, session, socket) do
+    socket = mount_current_scope(socket, session)
+
+    case socket.assigns.current_scope do
+      %Scope{pc_user: %PCUser{} = pc_user} ->
+        if PCUser.totp_enrolled?(pc_user) do
+          {:cont, socket}
+        else
+          socket =
+            socket
+            |> Phoenix.LiveView.put_flash(
+              :error,
+              "Two-factor authentication is required for admin access."
+            )
+            |> Phoenix.LiveView.redirect(to: ~p"/pc_users/log-in")
+
+          {:halt, socket}
+        end
+
+      _ ->
+        socket =
+          socket
+          |> Phoenix.LiveView.put_flash(:error, "You must log in to access this page.")
+          |> Phoenix.LiveView.redirect(to: ~p"/pc_users/log-in")
+
+        {:halt, socket}
+    end
+  end
+
   defp mount_current_scope(socket, session) do
     Phoenix.Component.assign_new(socket, :current_scope, fn ->
       {pc_user, _} =
@@ -375,6 +404,39 @@ defmodule EvenglassWeb.PCUserAuth do
       |> maybe_store_return_to()
       |> redirect(to: ~p"/pc_users/log-in")
       |> halt()
+    end
+  end
+
+  @doc """
+  Plug for admin-only routes (`/admin/*`, `/api/g2/commands`).
+
+  Requires:
+    1. an authenticated pc_user in scope, AND
+    2. that pc_user has completed initial TOTP enrollment.
+
+  Both conditions are normally guaranteed by the login flow (a session token is
+  only minted via `complete_log_in_pc_user/1` after TOTP succeeds), but the
+  explicit second check is defense in depth — if a future code path were ever
+  to mint a session token without a TOTP gate, this still blocks the route.
+  """
+  def require_pc_admin(conn, _opts) do
+    case conn.assigns[:current_scope] do
+      %Scope{pc_user: %PCUser{} = pc_user} ->
+        if PCUser.totp_enrolled?(pc_user) do
+          conn
+        else
+          conn
+          |> put_flash(:error, "Two-factor authentication is required for admin access.")
+          |> redirect(to: ~p"/pc_users/log-in")
+          |> halt()
+        end
+
+      _ ->
+        conn
+        |> put_flash(:error, "You must log in to access this page.")
+        |> maybe_store_return_to()
+        |> redirect(to: ~p"/pc_users/log-in")
+        |> halt()
     end
   end
 
