@@ -13,11 +13,17 @@ defmodule Evenglass.Repo.Migrations.CreateSessionsAndEvents do
 
     create table(:events, primary_key: false) do
       add :id, :binary_id, primary_key: true
-      add :session_id, references(:sessions, type: :binary_id, on_delete: :delete_all), null: false
+
+      add :session_id, references(:sessions, type: :binary_id, on_delete: :delete_all),
+        null: false
+
       add :direction, :string, null: false
       add :type, :string, null: false
       add :payload, :map, null: false, default: %{}
-      add :inserted_at, :utc_datetime, null: false, default: fragment("(now() at time zone 'utc')")
+
+      add :inserted_at, :utc_datetime,
+        null: false,
+        default: fragment("(now() at time zone 'utc')")
     end
 
     create index(:events, [:session_id, :inserted_at])

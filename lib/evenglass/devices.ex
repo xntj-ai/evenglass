@@ -62,7 +62,9 @@ defmodule Evenglass.Devices do
   """
   def generate_enrollment_code!(attrs \\ %{}) do
     code = generate_numeric_code(@code_length)
-    expires_at = DateTime.add(DateTime.utc_now(), @code_ttl_seconds, :second) |> DateTime.truncate(:second)
+
+    expires_at =
+      DateTime.add(DateTime.utc_now(), @code_ttl_seconds, :second) |> DateTime.truncate(:second)
 
     attrs =
       attrs

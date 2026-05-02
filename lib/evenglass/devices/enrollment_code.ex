@@ -11,8 +11,7 @@ defmodule Evenglass.Devices.EnrollmentCode do
     field :expires_at, :utc_datetime
     field :used_at, :utc_datetime
 
-    belongs_to :used_by_device, Evenglass.Devices.Device,
-      foreign_key: :used_by_device_id
+    belongs_to :used_by_device, Evenglass.Devices.Device, foreign_key: :used_by_device_id
 
     timestamps(type: :utc_datetime)
   end

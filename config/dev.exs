@@ -89,6 +89,10 @@ config :phoenix_live_view,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
 
+# Windows non-admin shells cannot create the symlink ColocatedJS wants;
+# we don't use colocated JS hooks, so silence the noisy compile message.
+config :phoenix_live_view, :colocated_js, disable_symlink_warning: true
+
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
 

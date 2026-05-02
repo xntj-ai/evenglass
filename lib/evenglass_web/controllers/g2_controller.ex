@@ -66,7 +66,9 @@ defmodule EvenglassWeb.G2Controller do
   def create_command(conn, _params) do
     conn
     |> put_status(:bad_request)
-    |> json(%{error: "device_id (string) and type (string) are required; payload (object) is optional"})
+    |> json(%{
+      error: "device_id (string) and type (string) are required; payload (object) is optional"
+    })
   end
 
   defp payload_response(event, device_id) do
