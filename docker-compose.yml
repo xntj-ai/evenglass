@@ -37,6 +37,8 @@ services:
       DATABASE_URL: ecto://evenglass:${POSTGRES_PASSWORD}@postgres/evenglass_prod
       SECRET_KEY_BASE: ${SECRET_KEY_BASE:?SECRET_KEY_BASE required}
       RELEASE_COOKIE: ${RELEASE_COOKIE:?RELEASE_COOKIE required}
+      DEVICE_TOKEN_SALT: ${DEVICE_TOKEN_SALT:?DEVICE_TOKEN_SALT required}
+      CHANNEL_TOKEN_SALT: ${CHANNEL_TOKEN_SALT:?CHANNEL_TOKEN_SALT required}
       PHX_HOST: ${PHX_HOST:-g2.xntj.tv}
       PHX_SERVER: "true"
       PORT: "4000"
