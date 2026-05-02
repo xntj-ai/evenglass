@@ -91,3 +91,8 @@ config :phoenix_live_view,
 
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
+
+# Phoenix.Token salts (dev only — prod values come from env in runtime.exs)
+config :evenglass,
+  device_token_salt: "dev-device-token-salt-DO-NOT-USE-IN-PROD",
+  channel_token_salt: "dev-channel-token-salt-DO-NOT-USE-IN-PROD"

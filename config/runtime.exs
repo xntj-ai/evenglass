@@ -27,8 +27,14 @@ if config_env() == :prod do
   # fetch_env! crashes immediately if missing — never silently use nil
   database_url = System.fetch_env!("DATABASE_URL")
   secret_key_base = System.fetch_env!("SECRET_KEY_BASE")
+  device_token_salt = System.fetch_env!("DEVICE_TOKEN_SALT")
+  channel_token_salt = System.fetch_env!("CHANNEL_TOKEN_SALT")
   host = System.get_env("PHX_HOST") || "g2.xntj.tv"
   port = String.to_integer(System.get_env("PORT") || "4000")
+
+  config :evenglass,
+    device_token_salt: device_token_salt,
+    channel_token_salt: channel_token_salt
 
   config :evenglass, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 

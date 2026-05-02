@@ -29,6 +29,11 @@ config :swoosh, :api_client, false
 # Print only warnings and errors during test
 config :logger, level: :warning
 
+# Phoenix.Token salts (test only — fixed values for deterministic tests)
+config :evenglass,
+  device_token_salt: "test-device-token-salt",
+  channel_token_salt: "test-channel-token-salt"
+
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
 

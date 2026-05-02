@@ -15,6 +15,12 @@ defmodule EvenglassWeb.Endpoint do
     websocket: [connect_info: [session: @session_options]],
     longpoll: [connect_info: [session: @session_options]]
 
+  # Hub App / PC admin Channel socket. Auth happens in UserSocket.connect/3 via
+  # a short-lived channel_token issued by POST /api/g2/socket-token.
+  socket "/socket", EvenglassWeb.UserSocket,
+    websocket: true,
+    longpoll: false
+
   # Serve at "/" the static files from "priv/static" directory.
   #
   # When code reloading is disabled (e.g., in production),

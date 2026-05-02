@@ -14,6 +14,11 @@ defmodule EvenglassWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :authenticated_api do
+    plug :accepts, ["json"]
+    plug EvenglassWeb.Plugs.AuthenticatedAPI
+  end
+
   scope "/", EvenglassWeb do
     pipe_through :browser
 
@@ -30,10 +35,27 @@ defmodule EvenglassWeb.Router do
   end
 
   scope "/api/g2", EvenglassWeb do
-    pipe_through :api
+    # Public auth endpoint — no token required
+    scope "/" do
+      pipe_through :api
+      post "/enroll", Api.AuthController, :enroll
+    end
 
-    post "/events", G2Controller, :create_event
-    post "/commands", G2Controller, :create_command
+    # Authenticated Hub App endpoints — device_token Bearer required
+    scope "/" do
+      pipe_through :authenticated_api
+      post "/refresh", Api.AuthController, :refresh
+      get "/whoami", Api.AuthController, :whoami
+      post "/socket-token", Api.AuthController, :socket_token
+      post "/events", G2Controller, :create_event
+    end
+
+    # PC commands — currently unprotected; task 1.5 introduces PC user auth
+    # and an :authenticated_admin_api pipeline that will guard this endpoint.
+    scope "/" do
+      pipe_through :api
+      post "/commands", G2Controller, :create_command
+    end
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
