@@ -5,12 +5,13 @@ defmodule EvenglassWeb.PCUserLive.LoginTest do
   import Evenglass.AccountsFixtures
 
   describe "login page" do
-    test "renders login page", %{conn: conn} do
+    test "renders login page (admin-only, no public registration)", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/pc_users/log-in")
 
       assert html =~ "Log in"
-      assert html =~ "Register"
       assert html =~ "Log in with email"
+      # Public registration is intentionally disabled for the admin tool.
+      refute html =~ "Sign up"
     end
   end
 
@@ -44,7 +45,7 @@ defmodule EvenglassWeb.PCUserLive.LoginTest do
   end
 
   describe "pc_user login - password" do
-    test "redirects if pc_user logs in with valid credentials", %{conn: conn} do
+    test "stages pending 2FA on valid credentials and redirects to TOTP setup", %{conn: conn} do
       pc_user = pc_user_fixture() |> set_password()
 
       {:ok, lv, _html} = live(conn, ~p"/pc_users/log-in")
@@ -56,7 +57,8 @@ defmodule EvenglassWeb.PCUserLive.LoginTest do
 
       conn = submit_form(form, conn)
 
-      assert redirected_to(conn) == ~p"/"
+      assert redirected_to(conn) == ~p"/pc_users/totp/setup"
+      assert get_session(conn, :pc_user_pending_2fa_id) == pc_user.id
     end
 
     test "redirects to login page with a flash error if credentials are invalid", %{
@@ -75,20 +77,6 @@ defmodule EvenglassWeb.PCUserLive.LoginTest do
     end
   end
 
-  describe "login navigation" do
-    test "redirects to registration page when the Register button is clicked", %{conn: conn} do
-      {:ok, lv, _html} = live(conn, ~p"/pc_users/log-in")
-
-      {:ok, _login_live, login_html} =
-        lv
-        |> element("main a", "Sign up")
-        |> render_click()
-        |> follow_redirect(conn, ~p"/pc_users/register")
-
-      assert login_html =~ "Register"
-    end
-  end
-
   describe "re-authentication (sudo mode)" do
     setup %{conn: conn} do
       pc_user = pc_user_fixture()
@@ -99,7 +87,7 @@ defmodule EvenglassWeb.PCUserLive.LoginTest do
       {:ok, _lv, html} = live(conn, ~p"/pc_users/log-in")
 
       assert html =~ "You need to reauthenticate"
-      refute html =~ "Register"
+      refute html =~ "Sign up"
       assert html =~ "Log in with email"
 
       assert html =~

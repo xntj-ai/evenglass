@@ -292,6 +292,73 @@ defmodule Evenglass.Accounts do
     :ok
   end
 
+  ## TOTP (RFC 6238) — second factor enforced after password / magic link
+
+  @doc """
+  Generates a fresh 20-byte TOTP secret for the user, persists it, and clears any
+  prior `totp_confirmed_at`. Re-running this rotates the secret and forces the
+  user to re-confirm. Idempotent within an unconfirmed enrollment: if the user
+  already has an unconfirmed `totp_secret`, it is returned unchanged so a
+  reloaded setup page shows the same QR code.
+  """
+  def setup_totp(%PCUser{totp_secret: secret, totp_confirmed_at: nil} = pc_user)
+      when is_binary(secret),
+      do: {:ok, pc_user}
+
+  def setup_totp(%PCUser{} = pc_user) do
+    pc_user
+    |> Ecto.Changeset.change(%{totp_secret: NimbleTOTP.secret(), totp_confirmed_at: nil})
+    |> Repo.update()
+  end
+
+  @doc """
+  Verifies the first OTP after enrollment. On success, marks the secret as
+  confirmed by setting `totp_confirmed_at`. The OTP is checked against ±30s
+  drift via `NimbleTOTP.valid?/3`.
+  """
+  def confirm_totp(%PCUser{totp_secret: secret} = pc_user, otp)
+      when is_binary(secret) and is_binary(otp) do
+    if NimbleTOTP.valid?(secret, otp) do
+      pc_user
+      |> Ecto.Changeset.change(%{totp_confirmed_at: DateTime.utc_now(:second)})
+      |> Repo.update()
+    else
+      {:error, :invalid_otp}
+    end
+  end
+
+  def confirm_totp(_pc_user, _otp), do: {:error, :no_secret}
+
+  @doc """
+  Verifies an OTP against an already-confirmed user's secret. Returns boolean.
+  Always returns false if the user has no confirmed secret — callers must not
+  rely on this as a "create on first verify" path.
+  """
+  def verify_totp(%PCUser{totp_secret: secret, totp_confirmed_at: %DateTime{}}, otp)
+      when is_binary(secret) and is_binary(otp) do
+    NimbleTOTP.valid?(secret, otp)
+  end
+
+  def verify_totp(_pc_user, _otp), do: false
+
+  @doc """
+  Returns the otpauth:// URI for the user's current secret, suitable for QR
+  encoding. Issuer is "Evenglass" so authenticator apps group entries.
+  """
+  def totp_uri(%PCUser{email: email, totp_secret: secret}) when is_binary(secret) do
+    NimbleTOTP.otpauth_uri("Evenglass:#{email}", secret, issuer: "Evenglass")
+  end
+
+  @doc """
+  Returns the user's TOTP secret base32-encoded — what users type into apps that
+  cannot scan QR codes. Returns nil when no secret is set.
+  """
+  def totp_base32(%PCUser{totp_secret: secret}) when is_binary(secret) do
+    Base.encode32(secret, padding: false)
+  end
+
+  def totp_base32(_), do: nil
+
   ## Token helper
 
   defp update_pc_user_and_delete_all_tokens(changeset) do

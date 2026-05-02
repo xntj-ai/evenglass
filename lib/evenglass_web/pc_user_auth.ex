@@ -5,7 +5,7 @@ defmodule EvenglassWeb.PCUserAuth do
   import Phoenix.Controller
 
   alias Evenglass.Accounts
-  alias Evenglass.Accounts.Scope
+  alias Evenglass.Accounts.{PCUser, Scope}
 
   # Make the remember me cookie valid for 14 days. This should match
   # the session validity setting in PCUserToken.
@@ -26,11 +26,90 @@ defmodule EvenglassWeb.PCUserAuth do
   # the reissuing of tokens completely.
   @session_reissue_age_in_days 7
 
-  @doc """
-  Logs the pc_user in.
+  # How long the half-authenticated state (password verified, awaiting TOTP)
+  # may sit in the session before we force the user back to the password page.
+  @two_factor_pending_max_age_seconds 10 * 60
 
-  Redirects to the session's `:pc_user_return_to` path
-  or falls back to the `signed_in_path/1`.
+  @doc """
+  Stages a half-authenticated session: the user has cleared the first factor
+  (password or magic link) but still owes us a TOTP. We park the pc_user_id
+  plus the user's remember-me preference under dedicated session keys (NOT
+  `:pc_user_token`) and redirect to the appropriate TOTP page.
+
+  Critical: this MUST be called instead of `log_in_pc_user/3` from any code
+  path that has only verified the first factor. Otherwise 2FA can be bypassed.
+  """
+  def initiate_two_factor(conn, %PCUser{} = pc_user, params \\ %{}) do
+    conn
+    |> renew_session(pc_user)
+    |> put_session(:pc_user_pending_2fa_id, pc_user.id)
+    |> put_session(:pc_user_pending_2fa_at, System.system_time(:second))
+    |> put_session(:pc_user_pending_2fa_remember_me, params["remember_me"] == "true")
+    |> redirect(to: two_factor_path_for(pc_user))
+  end
+
+  defp two_factor_path_for(%PCUser{totp_confirmed_at: %DateTime{}}), do: ~p"/pc_users/totp/verify"
+  defp two_factor_path_for(%PCUser{}), do: ~p"/pc_users/totp/setup"
+
+  @doc """
+  Promotes the half-authenticated session to a full session after a successful
+  TOTP. Reads the pending pc_user_id + remember-me preference from the session,
+  loads the user, issues a real session token, and clears the 2FA marker.
+
+  Returns a redirected conn pointing at the user's stored return path (if any)
+  or `signed_in_path/1`.
+  """
+  def complete_log_in_pc_user(conn) do
+    pc_user_id = get_session(conn, :pc_user_pending_2fa_id)
+    remember_me = get_session(conn, :pc_user_pending_2fa_remember_me)
+    pc_user = pc_user_id && Accounts.get_pc_user!(pc_user_id)
+    pc_user_return_to = get_session(conn, :pc_user_return_to)
+
+    conn
+    |> clear_pending_two_factor()
+    |> create_or_extend_session(pc_user, %{"remember_me" => to_string(remember_me)})
+    |> redirect(to: pc_user_return_to || signed_in_path(conn))
+  end
+
+  @doc """
+  Reads the pending 2FA marker. Returns `{:ok, pc_user}` if a non-expired pending
+  state exists, otherwise `:error`. Used by Controllers + LiveViews to gate the
+  TOTP setup/verify pages without duplicating the session-key logic.
+  """
+  def fetch_pending_two_factor(conn_or_session) do
+    pending_id = get_session_value(conn_or_session, :pc_user_pending_2fa_id)
+    pending_at = get_session_value(conn_or_session, :pc_user_pending_2fa_at)
+    now = System.system_time(:second)
+
+    cond do
+      is_nil(pending_id) or is_nil(pending_at) ->
+        :error
+
+      now - pending_at > @two_factor_pending_max_age_seconds ->
+        :error
+
+      true ->
+        case Accounts.get_pc_user!(pending_id) do
+          %PCUser{} = pc_user -> {:ok, pc_user}
+          _ -> :error
+        end
+    end
+  end
+
+  defp get_session_value(%Plug.Conn{} = conn, key), do: get_session(conn, key)
+  defp get_session_value(session, key) when is_map(session), do: session[Atom.to_string(key)]
+
+  defp clear_pending_two_factor(conn) do
+    conn
+    |> delete_session(:pc_user_pending_2fa_id)
+    |> delete_session(:pc_user_pending_2fa_at)
+    |> delete_session(:pc_user_pending_2fa_remember_me)
+  end
+
+  @doc """
+  Logs the pc_user in directly without a 2FA challenge. Reserved for callers
+  that have already enforced both factors (e.g. `complete_log_in_pc_user/1`).
+  Public-facing login paths must go through `initiate_two_factor/3`.
   """
   def log_in_pc_user(conn, pc_user, params \\ %{}) do
     pc_user_return_to = get_session(conn, :pc_user_return_to)
@@ -245,6 +324,24 @@ defmodule EvenglassWeb.PCUserAuth do
     end
   end
 
+  def on_mount(:require_pending_2fa, _params, session, socket) do
+    case fetch_pending_two_factor(session) do
+      {:ok, pc_user} ->
+        {:cont, Phoenix.Component.assign(socket, :pending_pc_user, pc_user)}
+
+      :error ->
+        socket =
+          socket
+          |> Phoenix.LiveView.put_flash(
+            :error,
+            "Your login session expired — please sign in again."
+          )
+          |> Phoenix.LiveView.redirect(to: ~p"/pc_users/log-in")
+
+        {:halt, socket}
+    end
+  end
+
   defp mount_current_scope(socket, session) do
     Phoenix.Component.assign_new(socket, :current_scope, fn ->
       {pc_user, _} =
@@ -257,12 +354,14 @@ defmodule EvenglassWeb.PCUserAuth do
   end
 
   @doc "Returns the path to redirect to after log in."
-  # the pc_user was already logged in, redirect to settings
-  def signed_in_path(%Plug.Conn{assigns: %{current_scope: %Scope{pc_user: %Accounts.PCUser{}}}}) do
+  # An admin in a sudo-mode re-auth flow already had a session — keep them in
+  # settings so update-password etc. can complete. Anyone else lands on the
+  # devices admin view (the canonical entrypoint to the operator UI).
+  def signed_in_path(%Plug.Conn{assigns: %{current_scope: %Scope{pc_user: %PCUser{}}}}) do
     ~p"/pc_users/settings"
   end
 
-  def signed_in_path(_), do: ~p"/"
+  def signed_in_path(_), do: ~p"/admin/devices"
 
   @doc """
   Plug for routes that require the pc_user to be authenticated.

@@ -105,5 +105,17 @@ defmodule EvenglassWeb.Router do
 
     post "/pc_users/log-in", PCUserSessionController, :create
     delete "/pc_users/log-out", PCUserSessionController, :delete
+
+    # TOTP second-factor pages — accessible only when the session carries a
+    # valid `pc_user_pending_2fa_id` marker (enforced by `:require_pending_2fa`
+    # on_mount for LiveViews; controller actions check via fetch_pending_two_factor).
+    live_session :pending_2fa,
+      on_mount: [{EvenglassWeb.PCUserAuth, :require_pending_2fa}] do
+      live "/pc_users/totp/setup", PCUserLive.TotpSetup
+      live "/pc_users/totp/verify", PCUserLive.TotpVerify
+    end
+
+    post "/pc_users/totp/setup", PCUserSessionController, :setup_totp
+    post "/pc_users/totp/verify", PCUserSessionController, :verify_totp
   end
 end

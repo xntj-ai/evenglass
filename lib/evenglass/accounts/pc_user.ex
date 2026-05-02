@@ -11,8 +11,24 @@ defmodule Evenglass.Accounts.PCUser do
     field :confirmed_at, :utc_datetime
     field :authenticated_at, :utc_datetime, virtual: true
 
+    # TOTP-based second factor (RFC 6238). `totp_secret` is generated on first
+    # setup; `totp_confirmed_at` is set only after the user successfully verifies
+    # their first OTP, proving the secret made it into their authenticator app.
+    field :totp_secret, :binary, redact: true
+    field :totp_confirmed_at, :utc_datetime
+
     timestamps(type: :utc_datetime)
   end
+
+  @doc """
+  Returns true when the user has completed initial TOTP enrollment, i.e. has
+  both a stored secret and a `totp_confirmed_at` timestamp.
+  """
+  def totp_enrolled?(%__MODULE__{totp_secret: secret, totp_confirmed_at: %DateTime{}})
+      when is_binary(secret),
+      do: true
+
+  def totp_enrolled?(_), do: false
 
   @doc """
   A pc_user changeset for registering or changing the email.

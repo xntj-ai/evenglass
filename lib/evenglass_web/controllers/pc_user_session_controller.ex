@@ -12,7 +12,7 @@ defmodule EvenglassWeb.PCUserSessionController do
     create(conn, params, "Welcome back!")
   end
 
-  # magic link login
+  # magic link login → first factor satisfied; route into TOTP flow
   defp create(conn, %{"pc_user" => %{"token" => token} = pc_user_params}, info) do
     case Accounts.login_pc_user_by_magic_link(token) do
       {:ok, {pc_user, tokens_to_disconnect}} ->
@@ -20,7 +20,7 @@ defmodule EvenglassWeb.PCUserSessionController do
 
         conn
         |> put_flash(:info, info)
-        |> PCUserAuth.log_in_pc_user(pc_user, pc_user_params)
+        |> PCUserAuth.initiate_two_factor(pc_user, pc_user_params)
 
       _ ->
         conn
@@ -29,14 +29,12 @@ defmodule EvenglassWeb.PCUserSessionController do
     end
   end
 
-  # email + password login
-  defp create(conn, %{"pc_user" => pc_user_params}, info) do
+  # email + password login → first factor satisfied; route into TOTP flow
+  defp create(conn, %{"pc_user" => pc_user_params}, _info) do
     %{"email" => email, "password" => password} = pc_user_params
 
     if pc_user = Accounts.get_pc_user_by_email_and_password(email, password) do
-      conn
-      |> put_flash(:info, info)
-      |> PCUserAuth.log_in_pc_user(pc_user, pc_user_params)
+      PCUserAuth.initiate_two_factor(conn, pc_user, pc_user_params)
     else
       # In order to prevent user enumeration attacks, don't disclose whether the email is registered.
       conn
@@ -57,6 +55,59 @@ defmodule EvenglassWeb.PCUserSessionController do
     conn
     |> put_session(:pc_user_return_to, ~p"/pc_users/settings")
     |> create(params, "Password updated successfully!")
+  end
+
+  ## Second factor — TOTP
+
+  @doc """
+  Confirms the first OTP after enrollment, persists `totp_confirmed_at`, and
+  promotes the half-authenticated session to a full session.
+  """
+  def setup_totp(conn, %{"totp" => %{"code" => code}}) do
+    case PCUserAuth.fetch_pending_two_factor(conn) do
+      {:ok, pc_user} ->
+        case Accounts.confirm_totp(pc_user, String.trim(code)) do
+          {:ok, _pc_user} ->
+            conn
+            |> put_flash(:info, "Two-factor authentication is now enabled.")
+            |> PCUserAuth.complete_log_in_pc_user()
+
+          {:error, :invalid_otp} ->
+            conn
+            |> put_flash(:error, "That code didn't match — try again.")
+            |> redirect(to: ~p"/pc_users/totp/setup")
+
+          {:error, :no_secret} ->
+            # Setup page should have populated the secret on mount; if it didn't,
+            # bounce the user back so a fresh secret can be generated.
+            conn
+            |> put_flash(:error, "Setup state lost — please re-scan the QR.")
+            |> redirect(to: ~p"/pc_users/totp/setup")
+        end
+
+      :error ->
+        conn
+        |> put_flash(:error, "Your login session expired — please sign in again.")
+        |> redirect(to: ~p"/pc_users/log-in")
+    end
+  end
+
+  @doc "Verifies an OTP from a previously-enrolled user, completing login."
+  def verify_totp(conn, %{"totp" => %{"code" => code}}) do
+    with {:ok, pc_user} <- PCUserAuth.fetch_pending_two_factor(conn),
+         true <- Accounts.verify_totp(pc_user, String.trim(code)) do
+      PCUserAuth.complete_log_in_pc_user(conn)
+    else
+      :error ->
+        conn
+        |> put_flash(:error, "Your login session expired — please sign in again.")
+        |> redirect(to: ~p"/pc_users/log-in")
+
+      false ->
+        conn
+        |> put_flash(:error, "That code didn't match — try again.")
+        |> redirect(to: ~p"/pc_users/totp/verify")
+    end
   end
 
   def delete(conn, _params) do

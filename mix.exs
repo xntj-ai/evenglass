@@ -41,6 +41,8 @@ defmodule Evenglass.MixProject do
   defp deps do
     [
       {:pbkdf2_elixir, "~> 2.0"},
+      {:nimble_totp, "~> 1.0"},
+      {:eqrcode, "~> 0.2"},
       {:phoenix, "~> 1.8.5"},
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},

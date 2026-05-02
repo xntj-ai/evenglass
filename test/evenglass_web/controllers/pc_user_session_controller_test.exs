@@ -9,7 +9,10 @@ defmodule EvenglassWeb.PCUserSessionControllerTest do
   end
 
   describe "POST /pc_users/log-in - email and password" do
-    test "logs the pc_user in", %{conn: conn, pc_user: pc_user} do
+    test "stages a half-authenticated session and redirects to TOTP setup", %{
+      conn: conn,
+      pc_user: pc_user
+    } do
       pc_user = set_password(pc_user)
 
       conn =
@@ -17,18 +20,15 @@ defmodule EvenglassWeb.PCUserSessionControllerTest do
           "pc_user" => %{"email" => pc_user.email, "password" => valid_pc_user_password()}
         })
 
-      assert get_session(conn, :pc_user_token)
-      assert redirected_to(conn) == ~p"/"
+      # 2FA gate: only the pending marker is set, the real session token is NOT.
+      assert get_session(conn, :pc_user_pending_2fa_id) == pc_user.id
+      refute get_session(conn, :pc_user_token)
 
-      # Now do a logged in request and assert on the menu
-      conn = get(conn, ~p"/")
-      response = html_response(conn, 200)
-      assert response =~ pc_user.email
-      assert response =~ ~p"/pc_users/settings"
-      assert response =~ ~p"/pc_users/log-out"
+      # Fresh user has no TOTP secret yet → routed to setup
+      assert redirected_to(conn) == ~p"/pc_users/totp/setup"
     end
 
-    test "logs the pc_user in with remember me", %{conn: conn, pc_user: pc_user} do
+    test "captures remember-me preference in pending session", %{conn: conn, pc_user: pc_user} do
       pc_user = set_password(pc_user)
 
       conn =
@@ -40,11 +40,13 @@ defmodule EvenglassWeb.PCUserSessionControllerTest do
           }
         })
 
-      assert conn.resp_cookies["_evenglass_web_pc_user_remember_me"]
-      assert redirected_to(conn) == ~p"/"
+      assert get_session(conn, :pc_user_pending_2fa_remember_me) == true
+      # Cookie is not written yet — that happens at complete_log_in_pc_user
+      refute conn.resp_cookies["_evenglass_web_pc_user_remember_me"]
+      assert redirected_to(conn) == ~p"/pc_users/totp/setup"
     end
 
-    test "logs the pc_user in with return to", %{conn: conn, pc_user: pc_user} do
+    test "preserves pc_user_return_to across the 2FA gate", %{conn: conn, pc_user: pc_user} do
       pc_user = set_password(pc_user)
 
       conn =
@@ -57,8 +59,10 @@ defmodule EvenglassWeb.PCUserSessionControllerTest do
           }
         })
 
-      assert redirected_to(conn) == "/foo/bar"
-      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Welcome back!"
+      # Goes to TOTP first; the return_to survives in session and is honored
+      # by complete_log_in_pc_user/1 once 2FA succeeds.
+      assert redirected_to(conn) == ~p"/pc_users/totp/setup"
+      assert get_session(conn, :pc_user_return_to) == "/foo/bar"
     end
 
     test "redirects to login page with invalid credentials", %{conn: conn, pc_user: pc_user} do
@@ -69,11 +73,15 @@ defmodule EvenglassWeb.PCUserSessionControllerTest do
 
       assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Invalid email or password"
       assert redirected_to(conn) == ~p"/pc_users/log-in"
+      refute get_session(conn, :pc_user_pending_2fa_id)
     end
   end
 
   describe "POST /pc_users/log-in - magic link" do
-    test "logs the pc_user in", %{conn: conn, pc_user: pc_user} do
+    test "stages a half-authenticated session and redirects to TOTP setup", %{
+      conn: conn,
+      pc_user: pc_user
+    } do
       {token, _hashed_token} = generate_pc_user_magic_link_token(pc_user)
 
       conn =
@@ -81,18 +89,15 @@ defmodule EvenglassWeb.PCUserSessionControllerTest do
           "pc_user" => %{"token" => token}
         })
 
-      assert get_session(conn, :pc_user_token)
-      assert redirected_to(conn) == ~p"/"
-
-      # Now do a logged in request and assert on the menu
-      conn = get(conn, ~p"/")
-      response = html_response(conn, 200)
-      assert response =~ pc_user.email
-      assert response =~ ~p"/pc_users/settings"
-      assert response =~ ~p"/pc_users/log-out"
+      assert get_session(conn, :pc_user_pending_2fa_id) == pc_user.id
+      refute get_session(conn, :pc_user_token)
+      assert redirected_to(conn) == ~p"/pc_users/totp/setup"
     end
 
-    test "confirms unconfirmed pc_user", %{conn: conn, unconfirmed_pc_user: pc_user} do
+    test "confirms unconfirmed pc_user before 2FA gate", %{
+      conn: conn,
+      unconfirmed_pc_user: pc_user
+    } do
       {token, _hashed_token} = generate_pc_user_magic_link_token(pc_user)
       refute pc_user.confirmed_at
 
@@ -102,18 +107,13 @@ defmodule EvenglassWeb.PCUserSessionControllerTest do
           "_action" => "confirmed"
         })
 
-      assert get_session(conn, :pc_user_token)
-      assert redirected_to(conn) == ~p"/"
-      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Pc user confirmed successfully."
-
+      # User account got confirmed even though full login is gated on TOTP
       assert Accounts.get_pc_user!(pc_user.id).confirmed_at
 
-      # Now do a logged in request and assert on the menu
-      conn = get(conn, ~p"/")
-      response = html_response(conn, 200)
-      assert response =~ pc_user.email
-      assert response =~ ~p"/pc_users/settings"
-      assert response =~ ~p"/pc_users/log-out"
+      assert get_session(conn, :pc_user_pending_2fa_id) == pc_user.id
+      refute get_session(conn, :pc_user_token)
+      assert redirected_to(conn) == ~p"/pc_users/totp/setup"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Pc user confirmed successfully."
     end
 
     test "redirects to login page when magic link is invalid", %{conn: conn} do
@@ -126,6 +126,81 @@ defmodule EvenglassWeb.PCUserSessionControllerTest do
                "The link is invalid or it has expired."
 
       assert redirected_to(conn) == ~p"/pc_users/log-in"
+      refute get_session(conn, :pc_user_pending_2fa_id)
+    end
+  end
+
+  describe "POST /pc_users/totp/setup" do
+    setup %{conn: conn, pc_user: pc_user} do
+      pc_user = set_password(pc_user)
+      {:ok, pc_user} = Accounts.setup_totp(pc_user)
+      conn = put_pending_2fa(conn, pc_user)
+      %{conn: conn, pc_user: pc_user}
+    end
+
+    test "completes login on first valid OTP", %{conn: conn, pc_user: pc_user} do
+      otp = NimbleTOTP.verification_code(pc_user.totp_secret)
+
+      conn = post(conn, ~p"/pc_users/totp/setup", %{"totp" => %{"code" => otp}})
+
+      assert get_session(conn, :pc_user_token)
+      refute get_session(conn, :pc_user_pending_2fa_id)
+      assert redirected_to(conn) == ~p"/admin/devices"
+      assert Accounts.get_pc_user!(pc_user.id).totp_confirmed_at
+    end
+
+    test "rejects an invalid OTP without enrolling", %{conn: conn, pc_user: pc_user} do
+      conn = post(conn, ~p"/pc_users/totp/setup", %{"totp" => %{"code" => "000000"}})
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "didn't match"
+      assert redirected_to(conn) == ~p"/pc_users/totp/setup"
+      refute Accounts.get_pc_user!(pc_user.id).totp_confirmed_at
+    end
+  end
+
+  describe "POST /pc_users/totp/verify" do
+    setup %{conn: conn, pc_user: pc_user} do
+      pc_user = set_password(pc_user)
+      {:ok, pc_user} = Accounts.setup_totp(pc_user)
+      otp = NimbleTOTP.verification_code(pc_user.totp_secret)
+      {:ok, pc_user} = Accounts.confirm_totp(pc_user, otp)
+      conn = put_pending_2fa(conn, pc_user)
+      %{conn: conn, pc_user: pc_user}
+    end
+
+    test "completes login on a valid OTP", %{conn: conn, pc_user: pc_user} do
+      otp = NimbleTOTP.verification_code(pc_user.totp_secret)
+
+      conn = post(conn, ~p"/pc_users/totp/verify", %{"totp" => %{"code" => otp}})
+
+      assert get_session(conn, :pc_user_token)
+      refute get_session(conn, :pc_user_pending_2fa_id)
+      assert redirected_to(conn) == ~p"/admin/devices"
+    end
+
+    test "rejects an invalid OTP", %{conn: conn} do
+      conn = post(conn, ~p"/pc_users/totp/verify", %{"totp" => %{"code" => "000000"}})
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "didn't match"
+      assert redirected_to(conn) == ~p"/pc_users/totp/verify"
+    end
+
+    test "expired pending session bounces back to log-in", %{conn: conn, pc_user: pc_user} do
+      otp = NimbleTOTP.verification_code(pc_user.totp_secret)
+
+      # Force the pending marker to be 11 minutes old (past the 10-min limit)
+      stale_at = System.system_time(:second) - 11 * 60
+
+      conn =
+        conn
+        |> init_test_session(%{
+          "pc_user_pending_2fa_id" => pc_user.id,
+          "pc_user_pending_2fa_at" => stale_at
+        })
+        |> post(~p"/pc_users/totp/verify", %{"totp" => %{"code" => otp}})
+
+      assert redirected_to(conn) == ~p"/pc_users/log-in"
+      refute get_session(conn, :pc_user_token)
     end
   end
 
@@ -143,5 +218,15 @@ defmodule EvenglassWeb.PCUserSessionControllerTest do
       refute get_session(conn, :pc_user_token)
       assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Logged out successfully"
     end
+  end
+
+  ## Helpers
+
+  defp put_pending_2fa(conn, pc_user) do
+    conn
+    |> Phoenix.ConnTest.init_test_session(%{
+      "pc_user_pending_2fa_id" => pc_user.id,
+      "pc_user_pending_2fa_at" => System.system_time(:second)
+    })
   end
 end
