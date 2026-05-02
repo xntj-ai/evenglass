@@ -1,9 +1,12 @@
 # Build artifacts
 _build/
 deps/
-# Pre-downloaded heroicons (CN cannot reach github from server) — must ship in build context
+# Pre-downloaded heroicons (CN cannot reach github from server) — must ship
+# the FULL git checkout (incl. .git) in the build context. Mix verifies the
+# pinned revision against deps/heroicons/.git/HEAD; without it, mix tries to
+# git fetch from origin (which fails on Beijing egress).
 !deps/heroicons
-deps/heroicons/.git
+!deps/heroicons/**
 *.beam
 *.ez
 erl_crash.dump
