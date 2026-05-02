@@ -24,11 +24,12 @@ defmodule EvenglassWeb.Router do
 
   # Browser-session-authenticated API. Required for endpoints that PCs (or the
   # admin browser) hit with the same `:pc_user_token` cookie used for /admin.
+  # Failures emit JSON 401, never an HTML redirect.
   pipeline :authenticated_admin_api do
     plug :accepts, ["json"]
     plug :fetch_session
     plug :fetch_current_scope_for_pc_user
-    plug :require_pc_admin
+    plug :require_pc_admin_api
   end
 
   scope "/", EvenglassWeb do

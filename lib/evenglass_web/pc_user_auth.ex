@@ -408,7 +408,7 @@ defmodule EvenglassWeb.PCUserAuth do
   end
 
   @doc """
-  Plug for admin-only routes (`/admin/*`, `/api/g2/commands`).
+  Plug for admin-only browser routes (`/admin/*`).
 
   Requires:
     1. an authenticated pc_user in scope, AND
@@ -418,6 +418,9 @@ defmodule EvenglassWeb.PCUserAuth do
   only minted via `complete_log_in_pc_user/1` after TOTP succeeds), but the
   explicit second check is defense in depth — if a future code path were ever
   to mint a session token without a TOTP gate, this still blocks the route.
+
+  On failure: redirect to `/pc_users/log-in`. For JSON API endpoints use
+  `require_pc_admin_api/2` instead, which returns a 401 JSON body.
   """
   def require_pc_admin(conn, _opts) do
     case conn.assigns[:current_scope] do
@@ -438,6 +441,33 @@ defmodule EvenglassWeb.PCUserAuth do
         |> redirect(to: ~p"/pc_users/log-in")
         |> halt()
     end
+  end
+
+  @doc """
+  Same authorization rule as `require_pc_admin/2` but emits JSON 401 on
+  failure. Used by the `:authenticated_admin_api` router pipeline (e.g.
+  `POST /api/g2/commands`) where a redirect to a browser login page would
+  be wrong for API clients.
+  """
+  def require_pc_admin_api(conn, _opts) do
+    case conn.assigns[:current_scope] do
+      %Scope{pc_user: %PCUser{} = pc_user} ->
+        if PCUser.totp_enrolled?(pc_user) do
+          conn
+        else
+          reject_api(conn, "totp_required")
+        end
+
+      _ ->
+        reject_api(conn, "unauthorized")
+    end
+  end
+
+  defp reject_api(conn, reason) do
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(401, Jason.encode!(%{error: reason}))
+    |> halt()
   end
 
   defp maybe_store_return_to(%{method: "GET"} = conn) do
