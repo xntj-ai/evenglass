@@ -35,4 +35,45 @@ defmodule EvenglassWeb.ConnCase do
     Evenglass.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
+
+  @doc """
+  Setup helper that registers and logs in pc_users.
+
+      setup :register_and_log_in_pc_user
+
+  It stores an updated connection and a registered pc_user in the
+  test context.
+  """
+  def register_and_log_in_pc_user(%{conn: conn} = context) do
+    pc_user = Evenglass.AccountsFixtures.pc_user_fixture()
+    scope = Evenglass.Accounts.Scope.for_pc_user(pc_user)
+
+    opts =
+      context
+      |> Map.take([:token_authenticated_at])
+      |> Enum.into([])
+
+    %{conn: log_in_pc_user(conn, pc_user, opts), pc_user: pc_user, scope: scope}
+  end
+
+  @doc """
+  Logs the given `pc_user` into the `conn`.
+
+  It returns an updated `conn`.
+  """
+  def log_in_pc_user(conn, pc_user, opts \\ []) do
+    token = Evenglass.Accounts.generate_pc_user_session_token(pc_user)
+
+    maybe_set_token_authenticated_at(token, opts[:token_authenticated_at])
+
+    conn
+    |> Phoenix.ConnTest.init_test_session(%{})
+    |> Plug.Conn.put_session(:pc_user_token, token)
+  end
+
+  defp maybe_set_token_authenticated_at(_token, nil), do: nil
+
+  defp maybe_set_token_authenticated_at(token, authenticated_at) do
+    Evenglass.AccountsFixtures.override_token_authenticated_at(token, authenticated_at)
+  end
 end

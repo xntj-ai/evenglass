@@ -7,6 +7,19 @@
 # General application configuration
 import Config
 
+config :evenglass, :scopes,
+  pc_user: [
+    default: true,
+    module: Evenglass.Accounts.Scope,
+    assign_key: :current_scope,
+    access_path: [:pc_user, :id],
+    schema_key: :pc_user_id,
+    schema_type: :binary_id,
+    schema_table: :pc_users,
+    test_data_fixture: Evenglass.AccountsFixtures,
+    test_setup_helper: :register_and_log_in_pc_user
+  ]
+
 config :evenglass,
   ecto_repos: [Evenglass.Repo],
   generators: [timestamp_type: :utc_datetime, binary_id: true]

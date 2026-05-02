@@ -1,6 +1,8 @@
 defmodule EvenglassWeb.Router do
   use EvenglassWeb, :router
 
+  import EvenglassWeb.PCUserAuth
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -8,6 +10,7 @@ defmodule EvenglassWeb.Router do
     plug :put_root_layout, html: {EvenglassWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug :fetch_current_scope_for_pc_user
   end
 
   pipeline :api do
@@ -73,5 +76,34 @@ defmodule EvenglassWeb.Router do
       live_dashboard "/dashboard", metrics: EvenglassWeb.Telemetry
       forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
+  end
+
+  ## Authentication routes
+
+  scope "/", EvenglassWeb do
+    pipe_through [:browser, :require_authenticated_pc_user]
+
+    live_session :require_authenticated_pc_user,
+      on_mount: [{EvenglassWeb.PCUserAuth, :require_authenticated}] do
+      live "/pc_users/settings", PCUserLive.Settings, :edit
+      live "/pc_users/settings/confirm-email/:token", PCUserLive.Settings, :confirm_email
+    end
+
+    post "/pc_users/update-password", PCUserSessionController, :update_password
+  end
+
+  scope "/", EvenglassWeb do
+    pipe_through [:browser]
+
+    live_session :current_pc_user,
+      on_mount: [{EvenglassWeb.PCUserAuth, :mount_current_scope}] do
+      # PC admins are bootstrapped via Evenglass.Release.create_pc_admin/2;
+      # public self-registration is intentionally disabled.
+      live "/pc_users/log-in", PCUserLive.Login, :new
+      live "/pc_users/log-in/:token", PCUserLive.Confirmation, :new
+    end
+
+    post "/pc_users/log-in", PCUserSessionController, :create
+    delete "/pc_users/log-out", PCUserSessionController, :delete
   end
 end
