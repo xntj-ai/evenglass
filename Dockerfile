@@ -23,11 +23,13 @@ WORKDIR /app
 
 RUN mix local.hex --force && mix local.rebar --force
 
+# Use upyun's hex.pm CDN mirror for CN egress; the canonical hex.pm CDN
+# (Fastly) routinely times out from Beijing on tarballs > 1 MB.
+RUN mix hex.config mirror_url https://hexpm.upyun.com
+
 ENV MIX_ENV=prod
 
-# Hex.pm timeout + concurrency tuning for CN egress: default 5 concurrent
-# requests + 60s per-request timeout times out from Beijing on packages like
-# phoenix_live_view (~5MB tarball). Serialize and triple the timeout.
+# Belt + suspenders: serialize hex requests + raise per-request timeout.
 ENV HEX_HTTP_CONCURRENCY=1
 ENV HEX_HTTP_TIMEOUT=180
 
