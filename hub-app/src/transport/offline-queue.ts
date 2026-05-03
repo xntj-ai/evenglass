@@ -1,9 +1,15 @@
-// Tiny IndexedDB-backed FIFO. Survives WebView restarts so events
-// captured while offline reach the server eventually. We dedupe via the
-// idempotency_key the server already enforces — replays cannot create
-// duplicate event rows.
+// IndexedDB-backed FIFO. Survives WebView restarts so events captured
+// offline reach the server eventually. We dedupe via the idempotency_key
+// the server already enforces — replays cannot create duplicate event
+// rows, so retrying a queued event is always safe.
+//
+// All mutations go through `update()`, which idb-keyval implements as a
+// single read-modify-write transaction on the IndexedDB object store.
+// That gives us atomic enqueue / takeAll / dropHead even with multiple
+// concurrent callers (sendEvent fires while flushQueue is running, etc.)
+// and keeps FIFO order intact under load.
 
-import { get, set } from "idb-keyval";
+import { get, update } from "idb-keyval";
 
 const QUEUE_KEY = "evenglass.uplink.queue.v1";
 
@@ -14,35 +20,34 @@ export type QueuedEvent = {
   enqueued_at: number;
 };
 
-async function read(): Promise<QueuedEvent[]> {
-  return ((await get<QueuedEvent[]>(QUEUE_KEY)) ?? []).slice();
-}
-
-async function write(queue: QueuedEvent[]): Promise<void> {
-  await set(QUEUE_KEY, queue);
-}
-
 export async function enqueue(event: QueuedEvent): Promise<void> {
-  const q = await read();
-  q.push(event);
-  await write(q);
+  await update<QueuedEvent[]>(QUEUE_KEY, (current) => [...(current ?? []), event]);
 }
 
-export async function drain(send: (event: QueuedEvent) => Promise<boolean>): Promise<void> {
-  const q = await read();
-  const remaining: QueuedEvent[] = [];
+export async function peekHead(): Promise<QueuedEvent | null> {
+  const q = await get<QueuedEvent[]>(QUEUE_KEY);
+  return q && q.length > 0 ? (q[0] ?? null) : null;
+}
 
-  for (const event of q) {
-    const ok = await send(event);
-    if (!ok) remaining.push(event);
-  }
-
-  if (remaining.length !== q.length) {
-    await write(remaining);
-  }
+/**
+ * Removes the queue head iff it still matches `expectedKey`. Returns
+ * true on successful removal. Concurrent enqueues that landed in the
+ * meantime are preserved untouched.
+ */
+export async function dropHeadIf(expectedKey: string): Promise<boolean> {
+  let removed = false;
+  await update<QueuedEvent[]>(QUEUE_KEY, (current) => {
+    const q = current ?? [];
+    if (q.length > 0 && q[0]?.idempotency_key === expectedKey) {
+      removed = true;
+      return q.slice(1);
+    }
+    return q;
+  });
+  return removed;
 }
 
 export async function size(): Promise<number> {
-  const q = await read();
-  return q.length;
+  const q = await get<QueuedEvent[]>(QUEUE_KEY);
+  return q?.length ?? 0;
 }

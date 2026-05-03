@@ -1,7 +1,11 @@
-// Server uplink for upstream events. Tries HTTP POST; on failure (offline,
-// 5xx, network) it queues to IndexedDB and retries on the next online
-// signal. Idempotency-Key is generated client-side so retries collapse
-// server-side instead of producing duplicates.
+// Server uplink — single ordering authority. Every sendEvent enqueues
+// first, then triggers a (re-entrant-safe) flush. The flush worker drains
+// the queue head-first; on failure (offline, 5xx) it leaves the head in
+// place and exits, so the event isn't lost and ordering is preserved.
+//
+// Rationale: a "post directly, queue on failure" path can reorder
+// (event A queued while B succeeds inline). Making the queue the single
+// path keeps strict FIFO and reduces moving parts.
 
 import type { KyInstance } from "ky";
 
@@ -9,9 +13,10 @@ import { logError, logInfo, logWarn } from "@services/logger";
 import { newUlid } from "@shared/ulid";
 
 import { makeHttp } from "./http";
-import { drain, enqueue, type QueuedEvent } from "./offline-queue";
+import { dropHeadIf, enqueue, peekHead, type QueuedEvent } from "./offline-queue";
 
 let http: KyInstance | null = null;
+let flushing = false;
 
 function client(): KyInstance {
   if (!http) http = makeHttp();
@@ -39,17 +44,37 @@ export async function sendEvent(type: string, payload: unknown): Promise<void> {
     enqueued_at: Date.now(),
   };
 
-  const sent = await postEvent(event);
-  if (!sent) {
-    await enqueue(event);
-  }
+  await enqueue(event);
+  void flushQueue();
 }
 
+/**
+ * Drains the queue head-first. Re-entrant calls return immediately —
+ * the in-flight flush will pick up any newly-enqueued events because it
+ * loops until peekHead() returns null.
+ */
 export async function flushQueue(): Promise<void> {
+  if (flushing) return;
+  flushing = true;
+
   try {
-    await drain(postEvent);
+    while (true) {
+      const head = await peekHead();
+      if (!head) return;
+
+      const ok = await postEvent(head);
+      if (!ok) {
+        // Network down or server 5xx — leave the head in place; the next
+        // online event or sendEvent call will retry. No event is lost.
+        return;
+      }
+
+      await dropHeadIf(head.idempotency_key);
+    }
   } catch (err) {
-    logError("queue drain failed", err);
+    logError("queue flush failed unexpectedly", err);
+  } finally {
+    flushing = false;
   }
 }
 
