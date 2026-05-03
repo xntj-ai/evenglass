@@ -57,6 +57,15 @@ defmodule Evenglass.AccountsFixtures do
     pc_user
   end
 
+  @doc "Returns a fully-onboarded admin: confirmed email + password + TOTP enrolled."
+  def admin_pc_user_fixture(attrs \\ %{}) do
+    pc_user = pc_user_fixture(attrs) |> set_password()
+    {:ok, pc_user} = Accounts.setup_totp(pc_user)
+    otp = NimbleTOTP.verification_code(pc_user.totp_secret)
+    {:ok, pc_user} = Accounts.confirm_totp(pc_user, otp)
+    pc_user
+  end
+
   def extract_pc_user_token(fun) do
     {:ok, captured_email} = fun.(&"[TOKEN]#{&1}[TOKEN]")
     [_, token | _] = String.split(captured_email.text_body, "[TOKEN]")

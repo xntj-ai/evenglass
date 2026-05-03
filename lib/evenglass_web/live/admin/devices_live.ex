@@ -28,13 +28,22 @@ defmodule EvenglassWeb.Admin.DevicesLive do
     <div class="mx-auto max-w-7xl px-4 py-8">
       <div class="mb-6 flex items-center justify-between">
         <h1 class="text-2xl font-semibold">Devices</h1>
-        <.link navigate={~p"/admin/events"} class="link link-primary text-sm">
-          all events →
-        </.link>
+        <div class="flex items-center gap-4">
+          <.link navigate={~p"/admin/devices/new"} class="btn btn-primary btn-sm">
+            + new device
+          </.link>
+          <.link navigate={~p"/admin/events"} class="link link-primary text-sm">
+            all events →
+          </.link>
+        </div>
       </div>
 
       <div :if={@devices == []} class="alert">
-        <span>No devices yet — POST to <code>/api/g2/events</code> to register one.</span>
+        <span>
+          No devices yet — click
+          <.link navigate={~p"/admin/devices/new"} class="link">+ new device</.link>
+          to issue an enrollment code.
+        </span>
       </div>
 
       <div :if={@devices != []} class="overflow-x-auto rounded-lg border border-base-300">
@@ -48,7 +57,14 @@ defmodule EvenglassWeb.Admin.DevicesLive do
           </thead>
           <tbody>
             <tr :for={device <- @devices}>
-              <td class="font-mono text-sm">{device.device_id}</td>
+              <td class="font-mono text-sm">
+                <.link
+                  navigate={~p"/admin/devices/#{device.device_id}"}
+                  class="link link-primary"
+                >
+                  {device.device_id}
+                </.link>
+              </td>
               <td class="font-mono text-xs">
                 {Calendar.strftime(device.last_seen_at || device.inserted_at, "%Y-%m-%d %H:%M:%S")}
               </td>

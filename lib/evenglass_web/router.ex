@@ -55,6 +55,8 @@ defmodule EvenglassWeb.Router do
     live_session :admin, on_mount: [{EvenglassWeb.PCUserAuth, :require_pc_admin}] do
       live "/events", Admin.EventsLive
       live "/devices", Admin.DevicesLive
+      live "/devices/new", Admin.NewDeviceLive
+      live "/devices/:id", Admin.DeviceShowLive
     end
   end
 
