@@ -1,43 +1,33 @@
-// Even Hub bridge — single point of contact with the native container.
+// Even Hub bridge — single entry point. Re-exports the official SDK's
+// `waitForEvenAppBridge` so callers always go through one module, and
+// caches the resolved instance for synchronous lookups (e.g. inside an
+// event callback that doesn't want to await again).
 //
-// Outside the Even App (e.g. Vite dev server in a normal browser),
-// `window.EvenHub` is undefined; we install a no-op stub so the rest of
-// the app keeps working in the dev preview.
+// Outside an Even App / simulator container the SDK's bridge still
+// initializes (its `init()` flips ready on DOMContentLoaded) but
+// `callEvenApp` calls will time out — that's the expected dev-mode
+// behavior in plain Chrome.
 
-import { logInfo, logWarn } from "@services/logger";
+import { waitForEvenAppBridge as sdkWaitForEvenAppBridge, type EvenAppBridge } from "@evenrealities/even_hub_sdk";
 
-let cachedBridge: EvenBridge | null = null;
-let readyPromise: Promise<EvenBridge> | null = null;
+import { logInfo } from "@services/logger";
 
-export function waitForEvenAppBridge(): Promise<EvenBridge> {
+let cachedBridge: EvenAppBridge | null = null;
+let readyPromise: Promise<EvenAppBridge> | null = null;
+
+export function waitForEvenAppBridge(): Promise<EvenAppBridge> {
   if (readyPromise) return readyPromise;
 
   readyPromise = (async () => {
-    const bridge = window.EvenHub ?? makeStubBridge();
-    await bridge.waitReady();
+    const bridge = await sdkWaitForEvenAppBridge();
     cachedBridge = bridge;
-    logInfo("bridge ready, version=", bridge.version);
+    logInfo("bridge ready");
     return bridge;
   })();
 
   return readyPromise;
 }
 
-export function bridgeOrNull(): EvenBridge | null {
+export function bridgeOrNull(): EvenAppBridge | null {
   return cachedBridge;
-}
-
-// Stub used when running outside the Even App container. Logs warnings
-// and never emits events — useful for visual/UI development on a desktop.
-function makeStubBridge(): EvenBridge {
-  logWarn("window.EvenHub not present — falling back to stub bridge (dev mode)");
-
-  return {
-    version: "stub",
-    waitReady: () => Promise.resolve(),
-    on: () => () => undefined,
-    audioControl: async (enabled) => {
-      logInfo("[stub] audioControl", enabled);
-    },
-  };
 }

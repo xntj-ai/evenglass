@@ -4,6 +4,7 @@ import { mountDebugOverlay } from "@debug/eruda";
 import { $isEnrolled } from "@shared/store";
 import { renderEnrollmentForm } from "@features/enrollment";
 import { startInputRelay } from "@features/input-relay";
+import { mountStartupPage } from "@features/g2-display";
 import { connectChannel } from "@transport/channel";
 import { flushQueue, watchOnlineForFlush } from "@transport/uplink";
 import { waitForEvenAppBridge } from "@bridge/index";
@@ -50,6 +51,12 @@ async function enterRelayMode(root: HTMLElement): Promise<void> {
     logInfo("channel connected");
   } catch (err) {
     logError("channel connect failed (will retry via socket reconnect)", err);
+  }
+
+  try {
+    await mountStartupPage();
+  } catch (err) {
+    logError("G2 startup page mount failed", err);
   }
 
   try {

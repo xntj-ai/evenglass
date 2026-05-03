@@ -33,6 +33,9 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // Listen on all interfaces so the Even Hub App on a paired phone
+    // (same Wi-Fi) can load this dev server via `evenhub qr --http --ip <LAN>`.
+    host: true,
     // Forward backend traffic to production. Lets the dev server share an
     // origin with API/WebSocket calls so browsers don't trip on CORS, and
     // exercises the same TLS / Phoenix endpoint a real device would hit.
