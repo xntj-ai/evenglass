@@ -23,6 +23,17 @@ let channel: Channel | null = null;
 
 const JOIN_TIMEOUT_MS = 15_000;
 
+/**
+ * Returns the currently joined channel, or null when there isn't one
+ * (never connected, mid-reconnect, or socket closed). Callers that need
+ * to push best-effort frames — e.g. the audio-relay — should null-check
+ * and drop on the floor when the link is down, rather than queueing PCM.
+ */
+export function getActiveChannel(): Channel | null {
+  if (channel && channel.state === "joined") return channel;
+  return null;
+}
+
 async function fetchChannelToken(): Promise<string> {
   const http = makeHttp();
   const res = await http

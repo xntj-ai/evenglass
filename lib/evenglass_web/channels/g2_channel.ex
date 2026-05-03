@@ -13,25 +13,42 @@ defmodule EvenglassWeb.G2Channel do
       Not rate-limited (trusted operator session).
     * All other cases reject with `unauthorized`.
 
-  ## Message contracts (forward-looking)
+  ## Message contracts
 
-  Currently exposes a `ping` request/reply for client liveness checks. Task 4.1
-  will add `event` (server → client) for downstream commands and a metrics
-  channel; task 1.5 will add command relay from PC admins.
+    * `ping` (in) — request/reply liveness check.
+    * `audio_chunk` (in, device-only) — Hub App pushes a batched PCM chunk:
+      `%{seq, pcm_b64, frames, bytes, sample_rate, format}`. Server does **not**
+      persist PCM. It accumulates frame/byte counts per socket and writes one
+      `audio_meta` event to `events` table per ~1s window for admin observability,
+      then `broadcast_from!`s the chunk to the topic so subscribed PC clients
+      (`:pc_admin` role) can pull bytes for downstream STT (milestone D1b).
+
+  Future: task 1.5 will add command relay from PC admins (`down` direction).
   """
 
   use Phoenix.Channel
 
-  alias Evenglass.RateLimit
+  alias Evenglass.{Events, RateLimit, Sessions}
 
   @join_scale_ms 60_000
   @join_limit 10
+
+  # Audio metadata is flushed to the events table once this much real time
+  # has elapsed since the last flush, capping the DB write rate at ≈1Hz/device.
+  @audio_meta_window_ms 1_000
 
   @impl true
   def join("g2:device:" <> id, _payload, %{assigns: %{role: :device, device_id: my_id}} = socket)
       when id == my_id do
     case RateLimit.hit("chan-join:device:#{my_id}", @join_scale_ms, @join_limit) do
       {:allow, _count} ->
+        session = Sessions.touch_session_by_device_id!(my_id)
+
+        socket =
+          socket
+          |> assign(:session_id, session.id)
+          |> assign(:audio_acc, fresh_audio_acc())
+
         {:ok, %{role: "device", device_id: my_id}, socket}
 
       {:deny, retry_after_ms} ->
@@ -50,5 +67,71 @@ defmodule EvenglassWeb.G2Channel do
   @impl true
   def handle_in("ping", _payload, socket) do
     {:reply, {:ok, %{pong: true, ts: System.system_time(:millisecond)}}, socket}
+  end
+
+  def handle_in(
+        "audio_chunk",
+        payload,
+        %{assigns: %{role: :device, session_id: session_id}} = socket
+      ) do
+    socket = accumulate_audio(socket, payload, session_id)
+
+    # Re-emit to other subscribers on the same topic so PC clients can ingest.
+    # `broadcast_from!` skips the sender, so the Hub App doesn't echo to itself.
+    broadcast_from!(socket, "audio_chunk", payload)
+
+    {:noreply, socket}
+  end
+
+  def handle_in("audio_chunk", _payload, socket) do
+    {:reply, {:error, %{reason: "audio_chunk_device_only"}}, socket}
+  end
+
+  ## Audio accumulator ────────────────────────────────────────────────────────
+
+  defp fresh_audio_acc do
+    %{frames: 0, bytes: 0, sample_rate: nil, format: nil, window_started_ms: nil}
+  end
+
+  defp accumulate_audio(socket, payload, session_id) do
+    now_ms = System.monotonic_time(:millisecond)
+    acc = socket.assigns.audio_acc
+
+    next = %{
+      frames: acc.frames + read_int(payload, "frames", 1),
+      bytes: acc.bytes + read_int(payload, "bytes", 0),
+      sample_rate: read_int(payload, "sample_rate", 16_000),
+      format: Map.get(payload, "format", "pcm_s16le"),
+      window_started_ms: acc.window_started_ms || now_ms
+    }
+
+    if now_ms - next.window_started_ms >= @audio_meta_window_ms do
+      flush_audio_meta!(session_id, next, now_ms)
+      assign(socket, :audio_acc, fresh_audio_acc())
+    else
+      assign(socket, :audio_acc, next)
+    end
+  end
+
+  defp flush_audio_meta!(session_id, acc, now_ms) do
+    Events.create_event!(%{
+      session_id: session_id,
+      direction: "up",
+      type: "audio_meta",
+      payload: %{
+        frames: acc.frames,
+        bytes: acc.bytes,
+        sample_rate: acc.sample_rate,
+        format: acc.format,
+        window_ms: now_ms - acc.window_started_ms
+      }
+    })
+  end
+
+  defp read_int(payload, key, default) do
+    case Map.get(payload, key) do
+      n when is_integer(n) and n >= 0 -> n
+      _ -> default
+    end
   end
 end
