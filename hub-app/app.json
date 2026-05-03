@@ -1,0 +1,14 @@
+{
+  "appId": "ai.xntj.evenglass",
+  "appName": "evenglass",
+  "version": "0.1.0",
+  "description": "Real-time relay between Even Realities G2 and PC business logic.",
+  "icon": "icon.png",
+  "permissions": {
+    "network": {
+      "whitelist": ["g2.xntj.tv"]
+    },
+    "g2-microphone": false
+  },
+  "entrypoint": "index.html"
+}

@@ -1,0 +1,38 @@
+{
+  "name": "evenglass-hub-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Even Hub Web App — bridges G2 (BLE via Hub SDK) to the evenglass server",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write src"
+  },
+  "dependencies": {
+    "@sentry/browser": "^8.50.0",
+    "idb-keyval": "^6.2.2",
+    "ky": "^1.7.5",
+    "nanostores": "^0.11.4",
+    "phoenix": "^1.7.18",
+    "ulidx": "^2.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/phoenix": "^1.6.6",
+    "@typescript-eslint/eslint-plugin": "^8.40.0",
+    "@typescript-eslint/parser": "^8.40.0",
+    "eruda": "^3.4.1",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.9.0",
+    "vite": "^7.2.0"
+  },
+  "packageManager": "pnpm@10.29.3",
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

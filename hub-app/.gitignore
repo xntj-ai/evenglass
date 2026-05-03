@@ -1,0 +1,15 @@
+node_modules
+dist
+*.log
+.DS_Store
+.idea
+.vscode
+.env.local
+.env.*.local
+*.tsbuildinfo
+.eslintcache
+
+# Vite-resolved env files in hub-app are PUBLIC build-time vars (no secrets);
+# override the repo-root rule that ignores all `.env.*` to commit them.
+!.env.development
+!.env.production
