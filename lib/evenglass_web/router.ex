@@ -15,6 +15,7 @@ defmodule EvenglassWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug OpenApiSpex.Plug.PutApiSpec, module: EvenglassWeb.ApiSpec
   end
 
   # Rate limit: 5 enroll attempts / 60s / client IP. Mounted as its own
@@ -55,6 +56,15 @@ defmodule EvenglassWeb.Router do
       live "/events", Admin.EventsLive
       live "/devices", Admin.DevicesLive
     end
+  end
+
+  # Public spec + interactive docs. The spec endpoint is what the hub-app
+  # TypeScript build pulls via `openapi-typescript`. Swagger UI at /api/docs.
+  scope "/api" do
+    pipe_through :api
+
+    get "/openapi.json", OpenApiSpex.Plug.RenderSpec, []
+    get "/docs", OpenApiSpex.Plug.SwaggerUI, path: "/api/openapi.json"
   end
 
   scope "/api/g2", EvenglassWeb do

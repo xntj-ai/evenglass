@@ -14,13 +14,56 @@ defmodule EvenglassWeb.G2Controller do
   """
 
   use EvenglassWeb, :controller
+  use OpenApiSpex.ControllerSpecs
 
   alias Evenglass.{Sessions, Events, Devices, RateLimit}
+
+  alias EvenglassWeb.Schemas.{
+    CommandRequest,
+    ErrorResponse,
+    EventRequest,
+    EventResponse
+  }
+
+  tags(["g2-relay"])
 
   @events_scale_ms 60_000
   @events_limit 600
   @commands_scale_ms 60_000
   @commands_limit 120
+
+  operation(:create_event,
+    summary: "Hub App reports an upstream event from G2",
+    description: """
+    Append an upstream event to the device's session. `device_id` is taken
+    from the bearer token, not the request body, so a compromised Hub App
+    cannot impersonate other devices.
+
+    Set `Idempotency-Key: <ulid>` to deduplicate retries: a second POST with
+    the same key returns the original event row (HTTP 201, identical `id`)
+    without inserting a duplicate.
+    """,
+    security: [%{"BearerAuth" => []}],
+    parameters: [
+      idempotency_key: [
+        in: :header,
+        name: "Idempotency-Key",
+        description: "Optional ULID-shaped client-generated key for at-most-once semantics.",
+        schema: %OpenApiSpex.Schema{
+          type: :string,
+          pattern: ~r/^[A-Za-z0-9_\-]{1,128}$/
+        },
+        required: false
+      ]
+    ],
+    request_body: {"Event payload", "application/json", EventRequest},
+    responses: %{
+      201 => {"Event accepted", "application/json", EventResponse},
+      400 => {"Malformed body", "application/json", ErrorResponse},
+      401 => {"Bearer missing/invalid", "application/json", ErrorResponse},
+      429 => {"Per-device rate limit (600/min) hit", "application/json", ErrorResponse}
+    }
+  )
 
   def create_event(%{assigns: %{device: device, device_id: device_id}} = conn, params) do
     with_rate_limit(conn, "events:device:#{device_id}", @events_scale_ms, @events_limit, fn ->
@@ -73,6 +116,22 @@ defmodule EvenglassWeb.G2Controller do
         nil
     end
   end
+
+  operation(:create_command,
+    summary: "PC admin issues a downstream command to a device",
+    description: """
+    Append a downstream command for the named device. Authenticated by the
+    PC admin browser session cookie + 2FA gate (NOT by `BearerAuth`).
+    Rate-limited 120/min/admin user.
+    """,
+    request_body: {"Command payload", "application/json", CommandRequest},
+    responses: %{
+      201 => {"Command accepted", "application/json", EventResponse},
+      400 => {"Malformed body", "application/json", ErrorResponse},
+      401 => {"Admin session missing or 2FA not completed", "application/json", ErrorResponse},
+      429 => {"Per-user rate limit (120/min) hit", "application/json", ErrorResponse}
+    }
+  )
 
   def create_command(conn, %{"device_id" => device_id, "type" => type} = params)
       when is_binary(device_id) and is_binary(type) do
