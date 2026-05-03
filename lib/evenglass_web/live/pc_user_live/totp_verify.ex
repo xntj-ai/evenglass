@@ -36,7 +36,9 @@ defmodule EvenglassWeb.PCUserLive.TotpVerify do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <%!-- Pending 2FA pages have no logged-in scope yet — Layouts.app's
+         current_scope attr defaults to nil, which is exactly right here. --%>
+    <Layouts.app flash={@flash}>
       <div class="mx-auto max-w-sm space-y-4">
         <div class="text-center">
           <.header>
