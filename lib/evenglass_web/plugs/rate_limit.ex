@@ -35,7 +35,11 @@ defmodule EvenglassWeb.Plugs.RateLimit do
   end
 
   def call(conn, %{bucket: bucket, scale_ms: scale_ms, limit: limit}) do
-    key = "#{bucket}:ip:#{client_ip(conn)}"
+    ip = client_ip(conn)
+    key = "#{bucket}:ip:#{ip}"
+    xff = get_req_header(conn, "x-forwarded-for")
+    require Logger
+    Logger.info("[rl] bucket=#{bucket} ip=#{ip} xff=#{inspect(xff)} remote_ip=#{inspect(conn.remote_ip)}")
 
     case RateLimit.hit(key, scale_ms, limit) do
       {:allow, _count} ->
