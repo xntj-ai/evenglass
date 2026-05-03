@@ -51,6 +51,7 @@ defmodule Evenglass.Accounts.PCUser do
     changeset =
       changeset
       |> validate_required([:email])
+      |> update_change(:email, &normalize_email/1)
       |> validate_format(:email, ~r/^[^@,;\s]+@[^@,;\s]+$/,
         message: "must have the @ sign and no spaces"
       )
@@ -64,6 +65,16 @@ defmodule Evenglass.Accounts.PCUser do
     else
       changeset
     end
+  end
+
+  # Trim + downcase email so lookups, rate-limit buckets, and uniqueness
+  # checks all agree regardless of casing. This is applied at the
+  # changeset level so any caller (registration, change-email, magic
+  # link) goes through it.
+  defp normalize_email(nil), do: nil
+
+  defp normalize_email(email) when is_binary(email) do
+    email |> String.trim() |> String.downcase()
   end
 
   defp validate_email_changed(changeset) do

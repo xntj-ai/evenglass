@@ -55,22 +55,39 @@ defmodule EvenglassWeb.Plugs.RateLimit do
   end
 
   @doc """
-  Extracts the originating client IP as a string. Trusts the first
-  `X-Forwarded-For` segment when present (Phoenix sits behind Caddy on
-  127.0.0.1 in prod), otherwise falls back to `conn.remote_ip`.
+  Extracts the originating client IP as a string.
+
+  Only honors `X-Forwarded-For` when `conn.remote_ip` is itself a private
+  address — i.e. the request came from a trusted reverse proxy on the
+  same host or container network (Caddy → 127.0.0.1, docker bridge
+  172.16.0.0/12, etc.). Public peers cannot inject a spoofed XFF and
+  bypass per-IP rate limits, even if the Phoenix port is ever exposed
+  directly.
   """
   def client_ip(conn) do
-    case get_req_header(conn, "x-forwarded-for") do
-      [xff | _] when is_binary(xff) ->
-        xff
-        |> String.split(",")
-        |> List.first()
-        |> String.trim()
+    if private_peer?(conn.remote_ip) do
+      case get_req_header(conn, "x-forwarded-for") do
+        [xff | _] when is_binary(xff) ->
+          xff
+          |> String.split(",")
+          |> List.first()
+          |> String.trim()
 
-      _ ->
-        conn.remote_ip
-        |> :inet.ntoa()
-        |> to_string()
+        _ ->
+          inet_to_string(conn.remote_ip)
+      end
+    else
+      inet_to_string(conn.remote_ip)
     end
   end
+
+  defp inet_to_string(addr), do: addr |> :inet.ntoa() |> to_string()
+
+  # RFC1918 + loopback. We treat IPv6 loopback ::1 as private too.
+  defp private_peer?({127, _, _, _}), do: true
+  defp private_peer?({10, _, _, _}), do: true
+  defp private_peer?({172, b, _, _}) when b in 16..31, do: true
+  defp private_peer?({192, 168, _, _}), do: true
+  defp private_peer?({0, 0, 0, 0, 0, 0, 0, 1}), do: true
+  defp private_peer?(_), do: false
 end

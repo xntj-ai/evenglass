@@ -23,7 +23,7 @@ defmodule Evenglass.Accounts do
 
   """
   def get_pc_user_by_email(email) when is_binary(email) do
-    Repo.get_by(PCUser, email: email)
+    Repo.get_by(PCUser, email: normalize_email(email))
   end
 
   @doc """
@@ -40,8 +40,14 @@ defmodule Evenglass.Accounts do
   """
   def get_pc_user_by_email_and_password(email, password)
       when is_binary(email) and is_binary(password) do
-    pc_user = Repo.get_by(PCUser, email: email)
+    pc_user = Repo.get_by(PCUser, email: normalize_email(email))
     if PCUser.valid_password?(pc_user, password), do: pc_user
+  end
+
+  # Email comparison is case-insensitive; the same normalization is applied
+  # in PCUser.validate_email so DB rows are stored canonical.
+  defp normalize_email(email) when is_binary(email) do
+    email |> String.trim() |> String.downcase()
   end
 
   @doc """

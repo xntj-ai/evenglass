@@ -15,6 +15,11 @@ defmodule Evenglass.AccountsTest do
       %{id: id} = pc_user = pc_user_fixture()
       assert %PCUser{id: ^id} = Accounts.get_pc_user_by_email(pc_user.email)
     end
+
+    test "matches case-insensitively (lookup normalizes input email)" do
+      %{id: id} = pc_user = pc_user_fixture()
+      assert %PCUser{id: ^id} = Accounts.get_pc_user_by_email(String.upcase(pc_user.email))
+    end
   end
 
   describe "get_pc_user_by_email_and_password/2" do
@@ -32,6 +37,16 @@ defmodule Evenglass.AccountsTest do
 
       assert %PCUser{id: ^id} =
                Accounts.get_pc_user_by_email_and_password(pc_user.email, valid_pc_user_password())
+    end
+
+    test "matches case-insensitively on email" do
+      %{id: id} = pc_user = pc_user_fixture() |> set_password()
+
+      assert %PCUser{id: ^id} =
+               Accounts.get_pc_user_by_email_and_password(
+                 String.upcase(pc_user.email),
+                 valid_pc_user_password()
+               )
     end
   end
 
@@ -59,6 +74,12 @@ defmodule Evenglass.AccountsTest do
       {:error, changeset} = Accounts.register_pc_user(%{email: "not valid"})
 
       assert %{email: ["must have the @ sign and no spaces"]} = errors_on(changeset)
+    end
+
+    test "stores email lowercased + trimmed" do
+      attrs = %{email: "  Mixed.Case@Example.COM  "}
+      {:ok, pc_user} = Accounts.register_pc_user(attrs)
+      assert pc_user.email == "mixed.case@example.com"
     end
 
     test "validates maximum values for email for security" do

@@ -132,10 +132,17 @@ defmodule Evenglass.Devices do
 
   ## Helpers ─────────────────────────────────────────────────────────────────
 
+  # Cryptographically uniform numeric code — :rand state is recoverable from
+  # a few outputs, which would let an observer predict future enrollment
+  # codes after the admin issues several in succession.
   defp generate_numeric_code(len) do
-    1..len
-    |> Enum.map(fn _ -> Integer.to_string(:rand.uniform(10) - 1) end)
-    |> Enum.join()
+    max = trunc(:math.pow(10, len))
+
+    :crypto.strong_rand_bytes(8)
+    |> :binary.decode_unsigned()
+    |> rem(max)
+    |> Integer.to_string()
+    |> String.pad_leading(len, "0")
   end
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)

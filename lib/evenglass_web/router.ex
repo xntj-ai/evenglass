@@ -15,6 +15,21 @@ defmodule EvenglassWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+  end
+
+  # Browser pipeline + require_pc_admin + PutApiSpec — gates the OpenAPI
+  # spec renderer + Swagger UI behind a 2FA-completed admin session.
+  # Anonymous exposure leaked full attack surface (route shapes, error
+  # codes, parameter constraints) so docs are now admin-only.
+  pipeline :openapi_docs do
+    plug :accepts, ["html", "json"]
+    plug :fetch_session
+    plug :fetch_live_flash
+    plug :put_root_layout, html: {EvenglassWeb.Layouts, :root}
+    plug :protect_from_forgery
+    plug :put_secure_browser_headers
+    plug :fetch_current_scope_for_pc_user
+    plug :require_pc_admin
     plug OpenApiSpex.Plug.PutApiSpec, module: EvenglassWeb.ApiSpec
   end
 
@@ -60,10 +75,11 @@ defmodule EvenglassWeb.Router do
     end
   end
 
-  # Public spec + interactive docs. The spec endpoint is what the hub-app
-  # TypeScript build pulls via `openapi-typescript`. Swagger UI at /api/docs.
+  # Admin-only OpenAPI spec + Swagger UI. CI jobs that generate the
+  # hub-app TypeScript client must use an authenticated session cookie
+  # (or pull the spec from a private build artifact instead).
   scope "/api" do
-    pipe_through :api
+    pipe_through :openapi_docs
 
     get "/openapi.json", OpenApiSpex.Plug.RenderSpec, []
     get "/docs", OpenApiSpex.Plug.SwaggerUI, path: "/api/openapi.json"
