@@ -25,7 +25,9 @@ defmodule EvenglassWeb.PCUserAuthTest do
       conn = PCUserAuth.log_in_pc_user(conn, pc_user)
       assert token = get_session(conn, :pc_user_token)
       assert get_session(conn, :live_socket_id) == "pc_users_sessions:#{Base.url_encode64(token)}"
-      assert redirected_to(conn) == ~p"/"
+      # signed_in_path/1 routes anonymous (no current_scope) callers to the
+      # admin landing page after milestone-C 1.5.
+      assert redirected_to(conn) == ~p"/admin/devices"
       assert Accounts.get_pc_user_by_session_token(token)
     end
 

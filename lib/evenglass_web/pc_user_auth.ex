@@ -40,13 +40,22 @@ defmodule EvenglassWeb.PCUserAuth do
   path that has only verified the first factor. Otherwise 2FA can be bypassed.
   """
   def initiate_two_factor(conn, %PCUser{} = pc_user, params \\ %{}) do
+    # renew_session clears the whole session for fixation safety; capture and
+    # restore :pc_user_return_to so the user lands on the page they were
+    # heading to once 2FA completes.
+    return_to = get_session(conn, :pc_user_return_to)
+
     conn
     |> renew_session(pc_user)
+    |> maybe_put_return_to(return_to)
     |> put_session(:pc_user_pending_2fa_id, pc_user.id)
     |> put_session(:pc_user_pending_2fa_at, System.system_time(:second))
     |> put_session(:pc_user_pending_2fa_remember_me, params["remember_me"] == "true")
     |> redirect(to: two_factor_path_for(pc_user))
   end
+
+  defp maybe_put_return_to(conn, nil), do: conn
+  defp maybe_put_return_to(conn, return_to), do: put_session(conn, :pc_user_return_to, return_to)
 
   defp two_factor_path_for(%PCUser{totp_confirmed_at: %DateTime{}}), do: ~p"/pc_users/totp/verify"
   defp two_factor_path_for(%PCUser{}), do: ~p"/pc_users/totp/setup"

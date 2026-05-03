@@ -37,7 +37,7 @@ defmodule EvenglassWeb.PCUserSessionController do
   end
 
   # email + password login → first factor satisfied; route into TOTP flow
-  defp create(conn, %{"pc_user" => pc_user_params}, _info) do
+  defp create(conn, %{"pc_user" => pc_user_params}, info) do
     %{"email" => email, "password" => password} = pc_user_params
     email_norm = email |> to_string() |> String.downcase() |> String.trim()
     ip = RateLimitPlug.client_ip(conn)
@@ -46,7 +46,9 @@ defmodule EvenglassWeb.PCUserSessionController do
     case RateLimit.hit(rl_key, @login_scale_ms, @login_limit) do
       {:allow, _count} ->
         if pc_user = Accounts.get_pc_user_by_email_and_password(email, password) do
-          PCUserAuth.initiate_two_factor(conn, pc_user, pc_user_params)
+          conn
+          |> put_flash(:info, info)
+          |> PCUserAuth.initiate_two_factor(pc_user, pc_user_params)
         else
           # In order to prevent user enumeration attacks, don't disclose whether the email is registered.
           conn

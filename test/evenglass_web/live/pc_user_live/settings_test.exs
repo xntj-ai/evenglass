@@ -113,9 +113,14 @@ defmodule EvenglassWeb.PCUserLive.SettingsTest do
 
       new_password_conn = follow_trigger_action(form, conn)
 
-      assert redirected_to(new_password_conn) == ~p"/pc_users/settings"
-
-      assert get_session(new_password_conn, :pc_user_token) != get_session(conn, :pc_user_token)
+      # update_password disconnects sessions and re-runs the login flow,
+      # which routes through the TOTP gate. Fresh fixture has no enrolled
+      # TOTP, so the immediate landing page is /pc_users/totp/setup. The
+      # final destination (/pc_users/settings) is preserved via
+      # :pc_user_return_to and reached after TOTP setup completes. The
+      # session token itself is not rotated until complete_log_in_pc_user/1
+      # runs at the end of the 2FA flow.
+      assert redirected_to(new_password_conn) == ~p"/pc_users/totp/setup"
 
       assert Phoenix.Flash.get(new_password_conn.assigns.flash, :info) =~
                "Password updated successfully"
