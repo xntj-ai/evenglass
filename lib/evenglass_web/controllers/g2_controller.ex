@@ -27,16 +27,18 @@ defmodule EvenglassWeb.G2Controller do
       case params do
         %{"type" => type} when is_binary(type) ->
           payload = Map.get(params, "payload", %{})
+          idempotency_key = read_idempotency_key(conn)
 
           Devices.touch_device!(device)
           session = Sessions.touch_session_by_device_id!(device_id)
 
           event =
-            Events.create_event!(%{
+            Events.create_event_idempotent!(%{
               session_id: session.id,
               direction: "up",
               type: type,
-              payload: payload
+              payload: payload,
+              idempotency_key: idempotency_key
             })
 
           conn
@@ -49,6 +51,27 @@ defmodule EvenglassWeb.G2Controller do
           |> json(%{error: "type (string) is required; payload (object) is optional"})
       end
     end)
+  end
+
+  # Returns the validated Idempotency-Key header (1–128 ASCII chars,
+  # ULID-friendly) or nil. Anything malformed is treated as no key — this
+  # avoids leaking validation errors back to clients while still letting
+  # well-behaved clients deduplicate retries.
+  defp read_idempotency_key(conn) do
+    case get_req_header(conn, "idempotency-key") do
+      [val | _] when is_binary(val) ->
+        trimmed = String.trim(val)
+
+        if trimmed != "" and byte_size(trimmed) <= 128 and
+             String.match?(trimmed, ~r/^[A-Za-z0-9_\-]+$/) do
+          trimmed
+        else
+          nil
+        end
+
+      _ ->
+        nil
+    end
   end
 
   def create_command(conn, %{"device_id" => device_id, "type" => type} = params)
