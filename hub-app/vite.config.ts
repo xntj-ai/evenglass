@@ -33,5 +33,25 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // Forward backend traffic to production. Lets the dev server share an
+    // origin with API/WebSocket calls so browsers don't trip on CORS, and
+    // exercises the same TLS / Phoenix endpoint a real device would hit.
+    proxy: {
+      "/api": {
+        target: "https://g2.xntj.tv",
+        changeOrigin: true,
+        secure: true,
+      },
+      "/socket": {
+        target: "https://g2.xntj.tv",
+        changeOrigin: true,
+        secure: true,
+        ws: true,
+        // Phoenix endpoint enforces check_origin against the upgrade
+        // request's Origin header; without this the dev origin
+        // (http://localhost:5173) gets rejected during the WS handshake.
+        rewriteWsOrigin: true,
+      },
+    },
   },
 });
