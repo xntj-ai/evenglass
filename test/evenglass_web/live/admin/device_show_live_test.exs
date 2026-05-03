@@ -38,6 +38,23 @@ defmodule EvenglassWeb.Admin.DeviceShowLiveTest do
       refute render(lv) =~ "Revoke device"
     end
 
+    test "revoke broadcasts a disconnect on the device's user_socket topic", %{
+      conn: conn,
+      device: device
+    } do
+      _device = Evenglass.Devices.set_jti!(device, "some-jti")
+
+      # Subscribe to the topic any active Hub App socket would be listening on.
+      # This is the security-critical side-effect of revocation; without it,
+      # a 2h channel_token survives the row update.
+      EvenglassWeb.Endpoint.subscribe("user_socket:#{device.id}")
+
+      {:ok, lv, _} = live(conn, ~p"/admin/devices/#{device.id}")
+      lv |> element("button", "Revoke device") |> render_click()
+
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}, 1_000
+    end
+
     test "redirects when device id is unknown", %{conn: conn} do
       missing = Ecto.UUID.generate()
 

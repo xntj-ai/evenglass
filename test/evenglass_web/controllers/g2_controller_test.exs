@@ -89,6 +89,33 @@ defmodule EvenglassWeb.G2ControllerTest do
     end
   end
 
+  describe "POST /api/g2/events — anti-spoofing" do
+    test "device_id in response is bound to bearer token, ignoring any value in body", %{
+      conn: conn
+    } do
+      %{device: dev_a, token: token_a} = authenticated_device_fixture()
+      %{device: dev_b} = authenticated_device_fixture()
+
+      assert dev_a.id != dev_b.id
+
+      # Device A's token + a body that tries to claim device B's id. The
+      # controller pulls device_id from conn.assigns (set by the
+      # AuthenticatedAPI plug from the bearer token), not the body, so
+      # spoofing must fail silently — the event is recorded under A.
+      response =
+        conn
+        |> put_req_header("authorization", "Bearer #{token_a}")
+        |> post(~p"/api/g2/events", %{
+          "type" => "tap",
+          "device_id" => dev_b.id,
+          "payload" => %{"button" => "left"}
+        })
+
+      assert json_response(response, 201)["device_id"] == dev_a.id
+      assert json_response(response, 201)["device_id"] != dev_b.id
+    end
+  end
+
   describe "Events.create_event_idempotent!/1" do
     test "returns existing row on duplicate insert race" do
       device = device_fixture()

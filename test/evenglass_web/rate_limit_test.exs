@@ -121,6 +121,41 @@ defmodule EvenglassWeb.RateLimitTest do
     end
   end
 
+  describe "UserSocket.connect — real channel_token path" do
+    test "valid channel_token assigns device_id + role and lets G2Channel join own topic" do
+      %{device: device} = setup_authenticated_device()
+      ct = Token.sign_channel_token(%{device_id: device.id, role: :device})
+
+      assert {:ok, %Phoenix.Socket{} = socket} =
+               Phoenix.ChannelTest.connect(EvenglassWeb.UserSocket, %{"token" => ct})
+
+      assert socket.assigns.device_id == device.id
+      assert socket.assigns.role == :device
+
+      assert {:ok, _, _} =
+               subscribe_and_join(socket, EvenglassWeb.G2Channel, "g2:device:#{device.id}", %{})
+    end
+
+    test "device A's channel_token cannot join device B's topic" do
+      %{device: dev_a} = setup_authenticated_device()
+      %{device: dev_b} = setup_authenticated_device()
+      ct_a = Token.sign_channel_token(%{device_id: dev_a.id, role: :device})
+
+      assert {:ok, socket} =
+               Phoenix.ChannelTest.connect(EvenglassWeb.UserSocket, %{"token" => ct_a})
+
+      assert {:error, %{reason: "unauthorized"}} =
+               subscribe_and_join(socket, EvenglassWeb.G2Channel, "g2:device:#{dev_b.id}", %{})
+    end
+
+    test "missing or malformed token rejects connect" do
+      assert :error = Phoenix.ChannelTest.connect(EvenglassWeb.UserSocket, %{})
+
+      assert :error =
+               Phoenix.ChannelTest.connect(EvenglassWeb.UserSocket, %{"token" => "garbage"})
+    end
+  end
+
   describe "POST /pc_users/log-in — 5/15min/IP+email" do
     test "returns rate-limit flash on the 6th attempt from same IP+email", %{conn: conn} do
       pc_user = pc_user_fixture()
