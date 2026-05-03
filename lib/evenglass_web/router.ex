@@ -17,6 +17,16 @@ defmodule EvenglassWeb.Router do
     plug :accepts, ["json"]
   end
 
+  # Rate limit: 5 enroll attempts / 60s / client IP. Mounted as its own
+  # pipeline so the public enroll endpoint can pipe_through [:api, :rl_enroll]
+  # without affecting the authenticated /api/g2/* routes.
+  pipeline :rl_enroll do
+    plug EvenglassWeb.Plugs.RateLimit,
+      bucket: "enroll",
+      scale_ms: 60_000,
+      limit: 5
+  end
+
   pipeline :authenticated_api do
     plug :accepts, ["json"]
     plug EvenglassWeb.Plugs.AuthenticatedAPI
@@ -50,7 +60,7 @@ defmodule EvenglassWeb.Router do
   scope "/api/g2", EvenglassWeb do
     # Public auth endpoint — no token required
     scope "/" do
-      pipe_through :api
+      pipe_through [:api, :rl_enroll]
       post "/enroll", Api.AuthController, :enroll
     end
 

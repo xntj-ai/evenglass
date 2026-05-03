@@ -1,8 +1,15 @@
 defmodule EvenglassWeb.PCUserSessionController do
   use EvenglassWeb, :controller
 
-  alias Evenglass.Accounts
+  alias Evenglass.{Accounts, RateLimit}
   alias EvenglassWeb.PCUserAuth
+  alias EvenglassWeb.Plugs.RateLimit, as: RateLimitPlug
+
+  # 5 attempts / 15min, keyed on (client_ip, email). Combined key prevents
+  # a single attacker from grinding multiple accounts from one IP, while
+  # still letting legitimate users on the same NAT log in independently.
+  @login_scale_ms 900_000
+  @login_limit 5
 
   def create(conn, %{"_action" => "confirmed"} = params) do
     create(conn, params, "Pc user confirmed successfully.")
@@ -32,15 +39,29 @@ defmodule EvenglassWeb.PCUserSessionController do
   # email + password login → first factor satisfied; route into TOTP flow
   defp create(conn, %{"pc_user" => pc_user_params}, _info) do
     %{"email" => email, "password" => password} = pc_user_params
+    email_norm = email |> to_string() |> String.downcase() |> String.trim()
+    ip = RateLimitPlug.client_ip(conn)
+    rl_key = "admin-login:#{ip}:#{email_norm}"
 
-    if pc_user = Accounts.get_pc_user_by_email_and_password(email, password) do
-      PCUserAuth.initiate_two_factor(conn, pc_user, pc_user_params)
-    else
-      # In order to prevent user enumeration attacks, don't disclose whether the email is registered.
-      conn
-      |> put_flash(:error, "Invalid email or password")
-      |> put_flash(:email, String.slice(email, 0, 160))
-      |> redirect(to: ~p"/pc_users/log-in")
+    case RateLimit.hit(rl_key, @login_scale_ms, @login_limit) do
+      {:allow, _count} ->
+        if pc_user = Accounts.get_pc_user_by_email_and_password(email, password) do
+          PCUserAuth.initiate_two_factor(conn, pc_user, pc_user_params)
+        else
+          # In order to prevent user enumeration attacks, don't disclose whether the email is registered.
+          conn
+          |> put_flash(:error, "Invalid email or password")
+          |> put_flash(:email, String.slice(email, 0, 160))
+          |> redirect(to: ~p"/pc_users/log-in")
+        end
+
+      {:deny, retry_after_ms} ->
+        mins = div(retry_after_ms, 60_000) + 1
+
+        conn
+        |> put_flash(:error, "Too many login attempts. Try again in #{mins} minute(s).")
+        |> put_flash(:email, String.slice(email, 0, 160))
+        |> redirect(to: ~p"/pc_users/log-in")
     end
   end
 

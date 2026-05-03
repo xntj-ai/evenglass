@@ -8,7 +8,9 @@ defmodule EvenglassWeb.G2Channel do
 
     * Role `:device` — may join only its own topic; `device_id` in the topic
       must equal `socket.assigns.device_id` (set during `UserSocket.connect/3`).
+      Joins are rate-limited 10 / 60s / device.
     * Role `:pc_admin` — may join any device topic for monitoring/control.
+      Not rate-limited (trusted operator session).
     * All other cases reject with `unauthorized`.
 
   ## Message contracts (forward-looking)
@@ -20,10 +22,21 @@ defmodule EvenglassWeb.G2Channel do
 
   use Phoenix.Channel
 
+  alias Evenglass.RateLimit
+
+  @join_scale_ms 60_000
+  @join_limit 10
+
   @impl true
   def join("g2:device:" <> id, _payload, %{assigns: %{role: :device, device_id: my_id}} = socket)
       when id == my_id do
-    {:ok, %{role: "device", device_id: my_id}, socket}
+    case RateLimit.hit("chan-join:device:#{my_id}", @join_scale_ms, @join_limit) do
+      {:allow, _count} ->
+        {:ok, %{role: "device", device_id: my_id}, socket}
+
+      {:deny, retry_after_ms} ->
+        {:error, %{reason: "rate_limited", retry_after_ms: retry_after_ms}}
+    end
   end
 
   def join("g2:device:" <> id, _payload, %{assigns: %{role: :pc_admin}} = socket) do

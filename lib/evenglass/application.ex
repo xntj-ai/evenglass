@@ -12,6 +12,7 @@ defmodule Evenglass.Application do
       Evenglass.Repo,
       {DNSCluster, query: Application.get_env(:evenglass, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Evenglass.PubSub},
+      {Evenglass.RateLimit, [clean_period: :timer.minutes(10)]},
       # Start a worker by calling: Evenglass.Worker.start_link(arg)
       # {Evenglass.Worker, arg},
       # Start to serve requests, typically the last entry
