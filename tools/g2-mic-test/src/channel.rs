@@ -122,10 +122,16 @@ async fn run(
         .await
         .context("fetch /api/pc/socket-token")?;
 
-    let url = format!("{}?token={}&vsn=2.0.0", cfg.wss_url, channel_token);
+    // Phoenix's `socket "/socket", UserSocket` mounts the websocket at
+    // `/socket/websocket` and the longpoll at `/socket/longpoll`. The
+    // phoenix.js client appends `/websocket` for you; raw tungstenite
+    // does not, so we have to do it explicitly here. The user-facing
+    // config field stays `wss://.../socket` to match Phoenix conventions.
+    let base = cfg.wss_url.trim_end_matches('/');
+    let url = format!("{base}/websocket?token={channel_token}&vsn=2.0.0");
     let (ws, _resp) = connect_async(&url)
         .await
-        .with_context(|| format!("connect_async {}", cfg.wss_url))?;
+        .with_context(|| format!("connect_async {url}"))?;
     info!("g2-mic-test: ws connected");
 
     let topic = cfg.topic();
@@ -218,7 +224,11 @@ async fn run(
 
 async fn fetch_channel_token(cfg: &G2Config) -> Result<String> {
     let url = format!("{}/api/pc/socket-token", cfg.api_url.trim_end_matches('/'));
-    let cookie_value = format!("_evenglass_web_pc_user_token={}", cfg.pc_session_cookie);
+    // _evenglass_key is the Plug.Session encrypted-cookie name (see
+    // EvenglassWeb.Endpoint @session_options). It carries the encrypted
+    // :pc_user_token field; Phoenix decrypts it using secret_key_base
+    // and PCUserAuth.fetch_current_scope_for_pc_user/2 reads the token.
+    let cookie_value = format!("_evenglass_key={}", cfg.pc_session_cookie);
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))

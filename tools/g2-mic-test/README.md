@@ -20,7 +20,8 @@ cargo run --release
 
 1. Log in to https://g2.xntj.tv/admin in a browser (admin email + TOTP).
 2. Open DevTools → Application → Cookies, copy the value of
-   `_evenglass_web_pc_user_token`.
+   `_evenglass_key` (the encrypted Plug.Session cookie that carries the
+   `:pc_user_token` field).
 3. Open admin → /admin/devices, copy the `device_id` you want to listen to.
 4. Paste both into the tool and click **Connect**.
 5. Click **▶ Start G2 mic** to push `start_audio` on the channel — the Hub

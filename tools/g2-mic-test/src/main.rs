@@ -19,6 +19,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod channel;
+mod config;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -30,9 +31,8 @@ use tokio::sync::mpsc;
 use tracing::warn;
 
 use channel::{spawn_worker, ChannelState, Cmd, Evt, G2Config};
+use config::PersistedConfig;
 
-const DEFAULT_WSS: &str = "wss://g2.xntj.tv/socket";
-const DEFAULT_API: &str = "https://g2.xntj.tv";
 const SAMPLE_RATE: u32 = 16_000;
 
 /// VU smoothing factor — higher = snappier meter, lower = smoother.
@@ -62,10 +62,12 @@ fn main() -> Result<()> {
         ..Default::default()
     };
 
+    let persisted = PersistedConfig::load();
+
     eframe::run_native(
         "G2 Mic Test",
         options,
-        Box::new(move |_cc| Ok(Box::new(App::new(rt.clone())))),
+        Box::new(move |_cc| Ok(Box::new(App::new(rt.clone(), persisted)))),
     )
     .map_err(|e| anyhow::anyhow!("eframe: {e}"))?;
     Ok(())
@@ -104,13 +106,13 @@ struct App {
 }
 
 impl App {
-    fn new(rt: Arc<tokio::runtime::Runtime>) -> Self {
+    fn new(rt: Arc<tokio::runtime::Runtime>, persisted: PersistedConfig) -> Self {
         Self {
             rt,
-            wss_url: DEFAULT_WSS.to_string(),
-            api_url: DEFAULT_API.to_string(),
-            device_id: String::new(),
-            cookie: String::new(),
+            wss_url: persisted.wss_url,
+            api_url: persisted.api_url,
+            device_id: persisted.device_id,
+            cookie: persisted.cookie,
             state: ChannelState::Disconnected,
             last_error: None,
             mic_on: false,
@@ -185,6 +187,20 @@ impl App {
         self.last_error = None;
         self.bytes_received = 0;
         self.vu = 0.0;
+
+        // Persist now (not on Joined) — cookie/device may already be wrong,
+        // but the user clearly wants these inputs remembered for the next
+        // launch either way; correct ones overwrite as soon as they retry.
+        let to_save = PersistedConfig {
+            wss_url: cfg.wss_url.clone(),
+            api_url: cfg.api_url.clone(),
+            device_id: cfg.device_id.clone(),
+            cookie: cfg.pc_session_cookie.clone(),
+        };
+        if let Err(e) = to_save.save() {
+            warn!("config save failed: {e:#}");
+        }
+
         let (cmd_tx, evt_rx) = spawn_worker(&self.rt, cfg);
         self.cmd_tx = Some(cmd_tx);
         self.evt_rx = Some(evt_rx);
@@ -269,7 +285,7 @@ impl eframe::App for App {
             ui.add(egui::TextEdit::singleline(&mut self.api_url).desired_width(f32::INFINITY));
             ui.label("device_id:");
             ui.add(egui::TextEdit::singleline(&mut self.device_id).desired_width(f32::INFINITY));
-            ui.label("PC admin session cookie (_evenglass_web_pc_user_token value):");
+            ui.label("PC admin session cookie (_evenglass_key value):");
             ui.add(
                 egui::TextEdit::singleline(&mut self.cookie)
                     .password(true)
@@ -321,10 +337,13 @@ impl eframe::App for App {
                 }
             });
 
-            // VU meter
+            // VU meter — display the RMS on a dBFS scale (-60..0) instead of
+            // raw linear, because the ear is logarithmic. "Normal speech"
+            // sits around -20 dBFS so the bar lands at ~70% with this curve;
+            // otherwise the same level barely registers as 6%.
             ui.label("Volume:");
-            let vu_norm = (self.vu).clamp(0.0, 1.0);
-            let pb = egui::ProgressBar::new(vu_norm).show_percentage();
+            let vu_pct = vu_to_dbfs_norm(self.vu);
+            let pb = egui::ProgressBar::new(vu_pct).show_percentage();
             ui.add(pb);
             ui.label(format!(
                 "{}    bytes received: {}",
@@ -396,6 +415,20 @@ fn vu_dbfs_label(rms: f32) -> String {
     }
 }
 
+/// Map linear RMS [0.0, 1.0] → progress-bar fraction [0.0, 1.0] using a
+/// -60..0 dBFS window. Below -60 dBFS reads as silence (0); 0 dBFS pegs
+/// the meter (1.0). The ear is logarithmic, so this curve makes the bar
+/// move proportionally to perceived loudness instead of cramming all
+/// useful signal into the bottom 10%.
+fn vu_to_dbfs_norm(rms: f32) -> f32 {
+    const FLOOR_DBFS: f32 = -60.0;
+    if rms <= 1e-6 {
+        return 0.0;
+    }
+    let dbfs = 20.0 * rms.log10();
+    ((dbfs - FLOOR_DBFS) / -FLOOR_DBFS).clamp(0.0, 1.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -416,5 +449,24 @@ mod tests {
         }
         let r = compute_rms_s16le(&bytes);
         assert!((r - 1.0).abs() < 1e-3, "rms = {r}");
+    }
+
+    #[test]
+    fn dbfs_norm_maps_speech_to_middle() {
+        // -20 dBFS is roughly normal speech RMS; should sit ~67% on a
+        // -60..0 window. (-20 - -60) / 60 = 0.667.
+        let rms = 10f32.powf(-20.0 / 20.0); // = 0.1
+        let norm = vu_to_dbfs_norm(rms);
+        assert!((norm - 2.0 / 3.0).abs() < 1e-3, "norm = {norm}");
+    }
+
+    #[test]
+    fn dbfs_norm_clamps_silence_to_zero() {
+        assert_eq!(vu_to_dbfs_norm(0.0), 0.0);
+    }
+
+    #[test]
+    fn dbfs_norm_clamps_full_scale_to_one() {
+        assert!((vu_to_dbfs_norm(1.0) - 1.0).abs() < 1e-6);
     }
 }
