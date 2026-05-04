@@ -1,0 +1,39 @@
+[package]
+name = "g2-mic-test"
+version = "0.1.0"
+edition = "2021"
+authors = ["Max Pin <zpplife@gmail.com>"]
+license = "MIT"
+description = "Standalone PC tool to verify the G2 → server → PC audio relay end-to-end."
+
+[dependencies]
+# UI: egui native window. Picked over Tauri because this is a small
+# diagnostic tool — no need for a webview, no HTML/CSS, no Node toolchain.
+# wgpu backend (instead of glow) — glow's lib build hit
+# STATUS_STACK_BUFFER_OVERRUN inside rustc on Windows; wgpu compiles cleanly.
+eframe = { version = "0.29", default-features = false, features = ["default_fonts", "wgpu"] }
+egui = "0.29"
+
+# Phoenix Channel WSS client (V2 JSONSerializer)
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["rustls-tls-webpki-roots", "connect", "handshake"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+
+# HTTP client for /api/pc/socket-token
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# Wire format
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+
+# WAV writer (16kHz S16LE mono)
+hound = "3"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Errors / utilities
+anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }

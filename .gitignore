@@ -49,3 +49,9 @@ notes/raw/
 
 # Vendored binaries (large, fetched separately on server via Shanghai proxy)
 vendor/tailwind/tailwindcss-*
+
+# Rust tools under tools/ — each crate has its own target/
+tools/*/target/
+
+# Recorded clips from g2-mic-test (saved next to the binary)
+tools/g2-mic-test/g2-mic-*.wav
