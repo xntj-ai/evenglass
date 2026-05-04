@@ -36,7 +36,7 @@ defmodule Evenglass.Release do
   Run inside the release container, e.g.:
 
       docker compose exec app /app/bin/evenglass eval \\
-        'Evenglass.Release.create_pc_admin("zpplife@gmail.com", "initial-password")'
+        'Evenglass.Release.create_pc_admin("admin@example.com", "change-me-on-first-login")'
 
   The password must be at least 12 characters (matches PCUser.password_changeset).
   Rotate it from /pc_users/settings after first login.

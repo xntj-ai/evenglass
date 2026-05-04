@@ -1,5 +1,5 @@
-# Target state for /etc/caddy/Caddyfile on Beijing server (101.42.154.134).
-# Replaces the existing single-site Caddyfile that only had cc.xntj.tv (now defunct).
+# Target state for /etc/caddy/Caddyfile on the production server.
+# Replaces the existing single-site Caddyfile (now defunct).
 # `derper-bj` container manages its own TLS on 3443, NOT proxied through Caddy.
 #
 # Deploy:

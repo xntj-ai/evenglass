@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>evenglass 项目复盘 — 把 G2 当 PC 外设这件事</title>
+<style>
+  :root {
+    --bg: #0b0b0d;
+    --bg-soft: #15151a;
+    --bg-card: rgba(255, 255, 255, 0.03);
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --text: #e8e6e1;
+    --text-mute: #a8a4a0;
+    --text-faint: #6b6864;
+    --accent: #d4b896;
+    --accent-soft: rgba(212, 184, 150, 0.12);
+    --warn: #c97a5a;
+    --good: #7fa583;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { font-size: 16px; scroll-behavior: smooth; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.75;
+    font-feature-settings: "ss01", "ss02", "cv01";
+    -webkit-font-smoothing: antialiased;
+    background-image:
+      radial-gradient(ellipse 800px 400px at 20% -10%, rgba(212, 184, 150, 0.04), transparent 60%),
+      radial-gradient(ellipse 600px 300px at 80% 110%, rgba(127, 165, 131, 0.03), transparent 60%);
+    background-attachment: fixed;
+  }
+
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 80px 32px 120px;
+  }
+
+  /* 顶部 */
+  .head { margin-bottom: 80px; }
+
+  .meta {
+    font-family: "JetBrains Mono", "SF Mono", Consolas, monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    color: var(--text-faint);
+    margin-bottom: 24px;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .meta .dot { color: var(--border-strong); }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--accent-soft);
+    border: 1px solid rgba(212, 184, 150, 0.3);
+    border-radius: 100px;
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .status-pill::before {
+    content: "";
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  h1 {
+    font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+    font-size: 2.4rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+    margin-bottom: 18px;
+    color: var(--text);
+  }
+
+  .lede {
+    font-size: 1.08rem;
+    color: var(--text-mute);
+    line-height: 1.8;
+    max-width: 620px;
+  }
+
+  /* 章节 */
+  section { margin-top: 72px; scroll-margin-top: 32px; }
+
+  h2 {
+    font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin-bottom: 8px;
+    color: var(--text);
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+
+  h2 .num {
+    font-family: "JetBrains Mono", "SF Mono", monospace;
+    font-size: 0.78rem;
+    color: var(--accent);
+    font-weight: 400;
+    letter-spacing: 0.05em;
+  }
+
+  h2 + .h2-sub {
+    color: var(--text-faint);
+    font-size: 0.92rem;
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  h3 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-top: 36px;
+    margin-bottom: 14px;
+    color: var(--text);
+    letter-spacing: 0.005em;
+  }
+
+  p { margin-bottom: 18px; }
+
+  p + p { margin-top: -2px; }
+
+  strong { color: var(--text); font-weight: 600; }
+  em { color: var(--accent); font-style: normal; font-weight: 500; }
+
+  a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(212, 184, 150, 0.3);
+    transition: border-color 0.15s ease;
+  }
+  a:hover { border-bottom-color: var(--accent); }
+
+  /* 代码 */
+  code {
+    font-family: "JetBrains Mono", "SF Mono", Consolas, monospace;
+    font-size: 0.86em;
+    padding: 2px 6px;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--accent);
+  }
+
+  pre {
+    font-family: "JetBrains Mono", "SF Mono", Consolas, monospace;
+    font-size: 0.82rem;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    overflow-x: auto;
+    margin: 24px 0;
+    line-height: 1.6;
+    color: var(--text-mute);
+  }
+
+  pre code {
+    background: none; border: none; padding: 0;
+    color: inherit; font-size: inherit;
+  }
+
+  /* 卡片 */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 22px 26px;
+    margin: 20px 0;
+    backdrop-filter: blur(8px);
+  }
+
+  .card.warn {
+    border-color: rgba(201, 122, 90, 0.25);
+    background: rgba(201, 122, 90, 0.04);
+  }
+
+  .card-label {
+    font-family: "JetBrains Mono", "SF Mono", monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--warn);
+    margin-bottom: 8px;
+  }
+
+  /* 架构图 */
+  .arch {
+    font-family: "JetBrains Mono", "SF Mono", Consolas, monospace;
+    font-size: 0.82rem;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    overflow-x: auto;
+    line-height: 1.8;
+    text-align: center;
+    color: var(--text-mute);
+    margin: 28px 0;
+  }
+  .arch .arrow { color: var(--accent); }
+  .arch .node { color: var(--text); }
+
+  /* 表格 */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 24px 0;
+    font-size: 0.92rem;
+  }
+
+  th, td {
+    text-align: left;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  th {
+    color: var(--text-faint);
+    font-weight: 500;
+    font-size: 0.82rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  td { color: var(--text-mute); }
+  td strong { color: var(--text); }
+
+  /* 列表 */
+  ul, ol { margin: 0 0 18px 1.4em; }
+  li { margin-bottom: 8px; color: var(--text-mute); }
+  li::marker { color: var(--text-faint); }
+
+  /* milestone */
+  .milestone {
+    display: grid;
+    grid-template-columns: 96px 1fr;
+    gap: 24px;
+    padding: 24px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .milestone:last-of-type { border-bottom: none; }
+
+  .milestone .tag {
+    font-family: "JetBrains Mono", "SF Mono", monospace;
+    font-size: 0.78rem;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    padding-top: 4px;
+  }
+
+  .milestone .body h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+
+  .milestone .body p {
+    color: var(--text-mute);
+    font-size: 0.94rem;
+    margin-bottom: 4px;
+  }
+
+  /* 引用 */
+  blockquote {
+    border-left: 2px solid var(--accent);
+    padding-left: 22px;
+    margin: 24px 0;
+    color: var(--text-mute);
+    font-style: italic;
+  }
+
+  /* 页脚 */
+  footer {
+    margin-top: 120px;
+    padding-top: 32px;
+    border-top: 1px solid var(--border);
+    color: var(--text-faint);
+    font-size: 0.84rem;
+    text-align: center;
+    line-height: 1.8;
+  }
+
+  footer a {
+    color: var(--text-mute);
+    border-bottom-color: var(--border);
+  }
+
+  /* 响应式 */
+  @media (max-width: 640px) {
+    .wrap { padding: 48px 22px 80px; }
+    h1 { font-size: 1.85rem; }
+    h2 { font-size: 1.3rem; }
+    .milestone { grid-template-columns: 1fr; gap: 8px; }
+    .milestone .tag { font-size: 0.72rem; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="head">
+  <div class="meta">
+    <span>2026.05.04</span>
+    <span class="dot">·</span>
+    <span>张拼拼</span>
+    <span class="dot">·</span>
+    <span class="status-pill">已归档</span>
+  </div>
+  <h1>把 G2 智能眼镜接成 PC 外设这件事，<br>我做到一半放弃了</h1>
+  <p class="lede">
+    花了八天，做出了一条从 PC 命令到 G2 麦克风、再回到 PC 落盘 wav 的端到端链路。最后停下，不是因为做不动，而是因为这个产品形态对我个人不成立。这篇是给后来者看的复盘——已经踩过的坑、做出来的东西、以及为什么我没继续。
+  </p>
+</header>
+
+<!-- ===================== 缘起 ===================== -->
+<section>
+  <h2><span class="num">01</span>缘起</h2>
+  <p class="h2-sub">想把 G2 当成 PC 的麦克风 + 显示外设</p>
+
+  <p>Even Realities G2 是一副带显示的智能眼镜，外观接近普通眼镜，但内置麦克风、触摸条、镜片可显示文字。原生体验绑定它自己的手机 App，做翻译/字幕/笔记。</p>
+
+  <p>我想要的不是这些。我想要的是：</p>
+
+  <ul>
+    <li>戴着眼镜，按住 CapsLock 说话，<strong>PC 上的输入法（voice-input）</strong>就把语音转成文字插入光标位置——眼镜代替桌面麦。</li>
+    <li>Claude Code 在终端里输出的关键日志、运行状态、AI 回答的开头——<strong>直接显示在镜片上</strong>，不用低头看屏幕。</li>
+  </ul>
+
+  <p>本质上是把 G2 从一个"独立的小型计算机"重新定义成"PC 的瘦客户端外设"。手机和服务器只做透传，业务全在 PC 端跑。</p>
+
+  <div class="card">
+    <div class="card-label">为什么不让手机直接接 PC</div>
+    <p style="margin: 0; color: var(--text-mute); font-size: 0.94rem;">G2 的 BLE 在音频侧的协议至今未公开，公开 SDK 只在手机里能跑（Android Hub App 容器形式）。绕开手机直接 PC ↔ G2 是死路。所以架构上手机这一层是<em>无法跳过的</em>——这是后面放弃的核心理由之一。</p>
+  </div>
+</section>
+
+<!-- ===================== 架构 ===================== -->
+<section>
+  <h2><span class="num">02</span>架构</h2>
+  <p class="h2-sub">五层透传，业务都在 PC 端</p>
+
+  <div class="arch">
+    <span class="node">[G2 眼镜]</span><br>
+    <span class="arrow">↓ BLE (Even 私有协议)</span><br>
+    <span class="node">[Android 手机 · Even Hub Web App]</span><br>
+    <span class="arrow">↓ WSS (Phoenix Channel)</span><br>
+    <span class="node">[北京服务器 · Phoenix/Elixir]</span><br>
+    <span class="arrow">↑ WSS (双 token 双 role)</span><br>
+    <span class="node">[Windows PC · 诊断工具/虚拟麦/voice-input]</span>
+  </div>
+
+  <p>每一层职责</p>
+
+  <table>
+    <thead><tr><th>层</th><th>实现</th><th>职责</th></tr></thead>
+    <tbody>
+      <tr><td><strong>G2</strong></td><td>原厂固件</td><td>麦克风采集 / 镜片显示</td></tr>
+      <tr><td><strong>手机</strong></td><td>Even Hub + 自写 Web App（TS）</td><td>BLE 通信 / SDK 调用 / WSS 转发</td></tr>
+      <tr><td><strong>服务器</strong></td><td>Phoenix 1.8 + LiveView 1.1</td><td>认证 / 限流 / Channel 路由 / Admin 实时观测</td></tr>
+      <tr><td><strong>PC</strong></td><td>Rust + egui（诊断）/ 待写虚拟麦</td><td>业务逻辑 / 用户交互</td></tr>
+    </tbody>
+  </table>
+
+  <p>选 Phoenix 是因为：BEAM 进程模型对"几千个长连接 + 实时广播"几乎零摩擦；LiveView 让 admin 后台不用前后端分离就能做到 60 events/min 实时刷新；Channel 协议本身就是为这种场景设计的。Elixir 的代价是社区比 Node 小，但收益是工程量明显更小。</p>
+</section>
+
+<!-- ===================== 做了什么 ===================== -->
+<section>
+  <h2><span class="num">03</span>做了什么</h2>
+  <p class="h2-sub">从 4-27 到 5-04，八天，五个里程碑</p>
+
+  <div class="milestone">
+    <div class="tag">A · 4-27</div>
+    <div class="body">
+      <h4>数据模型 + Admin 实时事件流</h4>
+      <p><code>sessions(device_id)</code> + <code>events(direction, type, payload jsonb)</code> 双表。<code>Sessions.touch_session_by_device_id!</code> 走 atomic upsert，<code>Events.create_event!</code> 写完直接 broadcast 到 PubSub topic <code>"events:all"</code>。</p>
+      <p><code>/admin/events</code> LiveView 流式 50 条，diff push 实时刷。压测 60 events/min 丝滑。</p>
+    </div>
+  </div>
+
+  <div class="milestone">
+    <div class="tag">B · 4-27</div>
+    <div class="body">
+      <h4>真实 REST 端点</h4>
+      <p><code>POST /api/g2/events</code>（手机上报）+ <code>POST /api/g2/commands</code>（PC 下发）。<code>/admin/devices</code> + per-device 过滤。删 mock controller。</p>
+    </div>
+  </div>
+
+  <div class="milestone">
+    <div class="tag">C · 5-02 → 5-03</div>
+    <div class="body">
+      <h4>生产级硬化</h4>
+      <p>认证（<code>phx.gen.auth</code> + <strong>TOTP 强制注册门</strong>）+ 限流（Hammer 7.x ETS）+ 幂等（header keyed 去重）+ OpenAPI（<code>open_api_spex</code>）+ <code>check_origin</code> 配置。这块花了最多时间，做完之后服务端就是"生产可用"状态。</p>
+      <p>147 个 mix test 全过，部署到 <a href="https://g2.xntj.tv">g2.xntj.tv</a> 上线。</p>
+    </div>
+  </div>
+
+  <div class="milestone">
+    <div class="tag">D1a · 5-04</div>
+    <div class="body">
+      <h4>音频上行链路打通</h4>
+      <p>Hub App 把 G2 麦克风的 PCM 帧按 100ms 窗口聚合成 base64，通过 channel push 上来。服务端是纯透传（PCM 是 live-or-never，丢了就丢，不存盘），但每秒写一条 <code>audio_meta</code> event 给 admin 面板看流量。</p>
+      <p>这一步的副产品是个<strong>意外的协议发现</strong>，下一节专门讲。</p>
+    </div>
+  </div>
+
+  <div class="milestone">
+    <div class="tag">D1b · 5-04</div>
+    <div class="body">
+      <h4>双向控制面 + Rust 诊断工具</h4>
+      <p>新增 <code>pc_admin</code> 角色 + 独立 token salt。Channel 上加 <code>start_audio</code> / <code>stop_audio</code> 命令，<code>broadcast_from!</code> 让 hub-app 收到、PC 自己不回环。</p>
+      <p>写了 <code>tools/g2-mic-test/</code> Rust + egui 单窗口工具，~700 行，<strong>包含一个手写的 Phoenix V2 wire format 客户端</strong>（社区里 Rust 实现很少）。端到端验证：PC 点 Connect → 拿 socket-token → WSS join → 点 Start G2 mic → 收 PCM → 录 wav → 放出来听到自己说话的声音。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 关键发现 ===================== -->
+<section>
+  <h2><span class="num">04</span>关键技术发现</h2>
+  <p class="h2-sub">G2 上行不是 LC3，是裸 PCM</p>
+
+  <p>开始之前我读过几个 G2 协议逆向项目（包括 i-soxi/even-g2-protocol），大部分都假设 G2 麦克风走 LC3 编码（40 字节/10ms），所以我提前规划了 LC3 解码这一步。</p>
+
+  <p>D1a 跑通后第一时间看了 admin 面板的流量计数：</p>
+
+  <pre><code>15:39:31  bytes=38400  frames=12  window_ms=1095  format=pcm_s16le
+15:39:33  bytes=35200  frames=11  window_ms=1013  format=pcm_s16le
+15:39:34  bytes=38400  frames=12  window_ms=1105  format=pcm_s16le
+15:39:35  bytes=38400  frames=12  window_ms=1091  format=pcm_s16le</code></pre>
+
+  <p><code>bytes / frames = 3200</code>。<code>16000 Hz × 2 byte/sample × 0.1 s = 3200</code>。完美吻合 16kHz mono S16LE PCM、100ms 一帧。</p>
+
+  <div class="card">
+    <div class="card-label">结论</div>
+    <p style="margin: 0; color: var(--text-mute); font-size: 0.94rem;"><strong>Even Hub SDK 在 simulator 上输出的 <code>audioPcm</code> 字段就是裸 PCM</strong>，不是 LC3。下游消费者不需要任何解码器，直接喂 ASR 即可。注意这只是 simulator 的实测，真机上是否一致需要真机验证（我没机会做）。</p>
+  </div>
+
+  <p>这个发现让 D1b 的工程量直接砍掉一半——本来还在算"加 lc3-rs 依赖、跑 wasm pack、性能测试"那一套，最后一行 LC3 代码都不用写。</p>
+</section>
+
+<!-- ===================== 为什么放弃 ===================== -->
+<section>
+  <h2><span class="num">05</span>为什么放弃</h2>
+  <p class="h2-sub">三个理由，从弱到强</p>
+
+  <h3>理由 1：开源生态还没成熟</h3>
+  <p>G2 公开 SDK 只覆盖了 Even Hub 容器内的 Web App 这一种形态。要把眼镜接到任何其他系统，都得通过它的手机 App 中转。SDK 文档不全，sideload 入口在中文版 <code>com.even.sg</code> 里目前没有暴露。社区项目稀少，能找到的几个还停在 G1 时代或者只逆向了部分协议。</p>
+  <p>这意味着每一个想做 G2 二次开发的人，都得自己摸一遍这条路。我做了一遍，但没有意愿做"上游"——开源出来给后人用。</p>
+
+  <h3>理由 2：手机中转是死结</h3>
+  <p>正常一个 PC 外设的拓扑应该是：<code>设备 → PC</code>。中间多一跳手机，意味着：</p>
+  <ul>
+    <li>手机要常驻一个进程，电量是问题</li>
+    <li>手机一断网整条链路都炸</li>
+    <li>开发态要同时维护三个端（手机/服务器/PC），调试一次要刷三份</li>
+    <li>用户使用前要装手机 App + 配账号 + 戴眼镜 + 开 PC 软件——心智负担太重</li>
+  </ul>
+  <p>架构上的优雅没有办法补救体验上的笨重。除非未来 Even 开放 BLE 直连协议，否则手机这一跳是物理上拿不掉的。</p>
+
+  <h3>理由 3：我不戴眼镜</h3>
+  <p>这是最直接也最不"工程"的理由：<strong>我视力正常，平时不戴眼镜</strong>。G2 戴上之后鼻梁有压痕、镜腿压耳朵，超过两小时就明显不舒服。</p>
+  <p>当工具的物理形态自身就抵抗使用，再优雅的软件层都没救。voice-input + 桌面麦克风的组合对我而言没有任何痛点——CapsLock 一按、说话、出字，整个流程零摩擦。G2 要做到一样的体验，我得：</p>
+  <ul>
+    <li>戴上一个我本来不戴的东西</li>
+    <li>开手机 App 保持后台</li>
+    <li>开 PC 端虚拟麦桥</li>
+    <li>开服务器（或者本地起 Phoenix）</li>
+  </ul>
+  <p>四步换零步。即使做到极致，也是负优化。</p>
+
+  <blockquote>
+    决定停下的那一刻，是我装 VB-Audio Cable 之前——意识到下一步要写一个 600 行的 Rust 桥程序，让一个我不戴的设备替代一个我已经用得很顺的麦克风。这个交易不成立。
+  </blockquote>
+</section>
+
+<!-- ===================== 给后来者 ===================== -->
+<section>
+  <h2><span class="num">06</span>给后来者</h2>
+  <p class="h2-sub">如果你正打算做类似的事</p>
+
+  <h3>这套代码里值得偷的东西</h3>
+  <ul>
+    <li><strong>Phoenix V2 wire format 的 Rust 实现</strong>（<code>tools/g2-mic-test/src/channel.rs</code>）。<code>phoenix.js</code> 自动加 <code>/websocket</code> 后缀和 <code>vsn=2.0.0</code>，raw client 不会，第一次写很容易踩。30s 心跳 + 5-tuple 帧格式都在里面。</li>
+    <li><strong>双 role socket 模型</strong>（<code>device</code> vs <code>pc_admin</code> 在同一个 <code>UserSocket</code> 用不同 clauses 分流，独立 token salt）。这种"一个 socket 跑两类客户端但权限完全隔离"的写法网上很少见。</li>
+    <li><strong>TOTP 强制注册门</strong>（<code>PCUserAuth.require_totp_enrolled/2</code>）。第一次登录的 admin 必须先扫码绑 TOTP 才放行 <code>/admin</code>。<code>phx.gen.auth</code> + NimbleTOTP 大部分博客只讲到 QR 渲染，登录拦截这块要自己写。</li>
+    <li><strong>Dockerfile 在中国大陆构建的优化</strong>。<code>github.com</code> 不可达 + <code>hex.pm</code> 慢，所以预先 vendor heroicons 和 tailwind 二进制，apt + hex 都换 Tencent/upyun 镜像。如果你在国内构建 Phoenix 应用，这个文件直接抄。</li>
+  </ul>
+
+  <h3>不要踩的坑</h3>
+  <ul>
+    <li><strong>不要默认 G2 上行是 LC3。</strong> simulator 是 PCM。真机你自己测帧大小再决定是否要 LC3 解码。</li>
+    <li><strong>不要去改第三方项目的代码做集成。</strong> 我曾经想直接给 voice-input 加 Phoenix Channel client——这是错的。第三方项目的边界要尊重，要么写桥要么提 PR，不要 fork。</li>
+    <li><strong>不要自己写 Windows 虚拟音频驱动。</strong> EV 证书 ~$200/年 + Microsoft Hardware Dev $99 + 内核编程 1-2 周。VB-Audio Cable 是免费的工业标准方案，3MB 装好直接出 <code>CABLE Input/Output</code> 两个设备。</li>
+    <li><strong>不要假设 sideload 可用。</strong> 写代码前先确认 hub 容器能装第三方 Web App。如果不能，你只能在 simulator 里跑，用户买回来的眼镜实际跑不通。</li>
+  </ul>
+</section>
+
+<!-- ===================== 资源 ===================== -->
+<section>
+  <h2><span class="num">07</span>资源</h2>
+
+  <ul>
+    <li>本项目源码：<a href="https://github.com/xntj-ai/evenglass">github.com/xntj-ai/evenglass</a>（MIT，归档）</li>
+    <li>Even Realities G1 Demo App（Flutter，BLE 协议参考）：<a href="https://github.com/even-realities/EvenDemoApp">even-realities/EvenDemoApp</a></li>
+    <li>i-soxi/even-g2-protocol（Python 逆向）：<a href="https://github.com/i-soxi/even-g2-protocol">i-soxi/even-g2-protocol</a></li>
+    <li>Phoenix Channel Wire Format 文档：<a href="https://hexdocs.pm/phoenix/Phoenix.Socket.html">hexdocs.pm/phoenix</a></li>
+    <li>VB-Audio Virtual Cable：<a href="https://vb-audio.com/Cable/">vb-audio.com/Cable</a></li>
+  </ul>
+</section>
+
+<footer>
+  <p>© 2026 张拼拼 (Max Pin) · zpplife@gmail.com · 保留所有权利</p>
+  <p style="margin-top: 6px; font-size: 0.78rem;">用 Phoenix · LiveView · Rust · egui · Even Hub SDK 写过这一份</p>
+</footer>
+
+</div>
+</body>
+</html>
