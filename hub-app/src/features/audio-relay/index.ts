@@ -12,10 +12,12 @@
 // the buffered frames are dropped on the floor. Queueing PCM offline is
 // pointless (audio is "live or never") and would balloon memory.
 
+import type { Channel } from "phoenix";
+
 import { onEvenHubEvent } from "@bridge/events";
 import { waitForEvenAppBridge } from "@bridge/index";
 import { safeCall } from "@bridge/safe-call";
-import { logInfo, logWarn } from "@services/logger";
+import { logError, logInfo, logWarn } from "@services/logger";
 import { getActiveChannel } from "@transport/channel";
 
 const FLUSH_INTERVAL_MS = 100;
@@ -114,6 +116,67 @@ export async function startAudioRelay(): Promise<AudioRelayHandle> {
   };
   active = handle;
   return handle;
+}
+
+/**
+ * Wires the channel's `start_audio` / `stop_audio` events to start/stop the
+ * audio relay. PC clients (voice-input) push these on PTT key down/up; the
+ * server `broadcast_from!`s them so this Hub App receives them but the PC
+ * does not echo to itself.
+ *
+ * Returns a teardown function that detaches both listeners and stops any
+ * active relay. Reentrant signals (start while running, stop while idle)
+ * are treated as no-ops so spurious key repeats don't churn the bridge.
+ */
+export function attachAudioControlListener(channel: Channel): () => void {
+  let handle: AudioRelayHandle | null = null;
+  let busy = false;
+
+  const startRef = channel.on("start_audio", () => {
+    if (busy || handle) return;
+    busy = true;
+
+    void (async () => {
+      try {
+        handle = await startAudioRelay();
+        logInfo("audio-relay: started by channel start_audio");
+      } catch (err) {
+        logError("audio-relay: start_audio handler failed", err);
+        handle = null;
+      } finally {
+        busy = false;
+      }
+    })();
+  });
+
+  const stopRef = channel.on("stop_audio", () => {
+    if (busy || !handle) return;
+    busy = true;
+
+    void (async () => {
+      const h = handle;
+      handle = null;
+      try {
+        await h?.stop();
+        logInfo("audio-relay: stopped by channel stop_audio");
+      } catch (err) {
+        logError("audio-relay: stop_audio handler failed", err);
+      } finally {
+        busy = false;
+      }
+    })();
+  });
+
+  return () => {
+    channel.off("start_audio", startRef);
+    channel.off("stop_audio", stopRef);
+    if (handle) {
+      void handle.stop().catch((err) =>
+        logError("audio-relay: detach stop failed", err),
+      );
+      handle = null;
+    }
+  };
 }
 
 function mergeFrames(frames: Uint8Array[], totalBytes: number): Uint8Array {
