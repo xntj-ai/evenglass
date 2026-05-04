@@ -108,6 +108,13 @@ defmodule EvenglassWeb.Router do
     end
   end
 
+  # PC admin authentication (browser session cookie + 2FA, NOT BearerAuth).
+  # Separated from `/api/g2/*` because the audience and auth scheme differ.
+  scope "/api/pc", EvenglassWeb do
+    pipe_through :authenticated_admin_api
+    post "/socket-token", Api.PcAuthController, :socket_token
+  end
+
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:evenglass, :dev_routes) do
     # If you want to use the LiveDashboard in production, you should put

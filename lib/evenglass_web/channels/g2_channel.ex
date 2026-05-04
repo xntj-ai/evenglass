@@ -22,8 +22,10 @@ defmodule EvenglassWeb.G2Channel do
       `audio_meta` event to `events` table per ~1s window for admin observability,
       then `broadcast_from!`s the chunk to the topic so subscribed PC clients
       (`:pc_admin` role) can pull bytes for downstream STT (milestone D1b).
-
-  Future: task 1.5 will add command relay from PC admins (`down` direction).
+    * `start_audio` / `stop_audio` (in, pc_admin-only) — PC admin signals the
+      Hub App to enable/disable the G2 microphone. Server `broadcast_from!`s
+      the event to the topic so the Hub App receives it (sender is skipped).
+      No persistence; commands are best-effort live signals.
   """
 
   use Phoenix.Channel
@@ -87,6 +89,17 @@ defmodule EvenglassWeb.G2Channel do
     {:reply, {:error, %{reason: "audio_chunk_device_only"}}, socket}
   end
 
+  def handle_in(event, payload, %{assigns: %{role: :pc_admin}} = socket)
+      when event in ["start_audio", "stop_audio"] do
+    broadcast_from!(socket, event, sanitize_audio_command(payload))
+    {:noreply, socket}
+  end
+
+  def handle_in(event, _payload, socket)
+      when event in ["start_audio", "stop_audio"] do
+    {:reply, {:error, %{reason: "pc_admin_only"}}, socket}
+  end
+
   ## Audio accumulator ────────────────────────────────────────────────────────
 
   defp fresh_audio_acc do
@@ -134,4 +147,16 @@ defmodule EvenglassWeb.G2Channel do
       _ -> default
     end
   end
+
+  # Audio commands carry no required fields today, but PC clients may attach a
+  # `seq` for client-side correlation. Strip everything else to keep the wire
+  # contract narrow and avoid forwarding unbounded payloads to Hub Apps.
+  defp sanitize_audio_command(payload) when is_map(payload) do
+    case Map.get(payload, "seq") do
+      n when is_integer(n) -> %{"seq" => n}
+      _ -> %{}
+    end
+  end
+
+  defp sanitize_audio_command(_), do: %{}
 end

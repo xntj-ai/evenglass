@@ -10,9 +10,12 @@ defmodule Evenglass.Auth.Token do
       stored `jti` so any old token whose `jti` mismatches is rejected.
 
     * `channel_token` (2h, salt: `:channel_token_salt`) — short-lived credential
-      for WSS connect. Issued by `/api/g2/socket-token` after device_token
-      verification. Carries `%{device_id, role}` where role is `:device` or
-      `:pc_admin`.
+      for WSS connect. Two variants:
+        - `:device` role: issued by `/api/g2/socket-token` after device_token
+          verification. Payload `%{device_id, role: :device}`.
+        - `:pc_admin` role: issued by `/api/pc/socket-token` after PC admin
+          session + 2FA verification. Payload `%{pc_user_id, role: :pc_admin}`.
+          PC admins may join any `g2:device:<id>` topic (monitoring/control).
 
   Salts are configured per env (`config/dev.exs`, `config/runtime.exs`).
   """
@@ -38,9 +41,12 @@ defmodule Evenglass.Auth.Token do
 
   ## Channel tokens ──────────────────────────────────────────────────────────
 
-  def sign_channel_token(%{device_id: id, role: role})
-      when is_binary(id) and role in [:device, :pc_admin] do
-    Phoenix.Token.sign(Endpoint, salt(:channel), %{device_id: id, role: role})
+  def sign_channel_token(%{device_id: id, role: :device}) when is_binary(id) do
+    Phoenix.Token.sign(Endpoint, salt(:channel), %{device_id: id, role: :device})
+  end
+
+  def sign_channel_token(%{pc_user_id: uid, role: :pc_admin}) when is_binary(uid) do
+    Phoenix.Token.sign(Endpoint, salt(:channel), %{pc_user_id: uid, role: :pc_admin})
   end
 
   def verify_channel_token(token) when is_binary(token) do
