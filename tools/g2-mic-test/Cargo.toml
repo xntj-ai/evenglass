@@ -2,7 +2,7 @@
 name = "g2-mic-test"
 version = "0.1.0"
 edition = "2021"
-authors = ["Max Pin <zpplife@gmail.com>"]
+authors = ["Max Pin <261258674+xntj-ai@users.noreply.github.com>"]
 license = "MIT"
 description = "Standalone PC tool to verify the G2 → server → PC audio relay end-to-end."
 
